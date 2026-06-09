@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV Import — </title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--surface:#fff;--border:#e0e3ea;
+  --blue:#1565c0;--blue-light:#e3f0ff;--blue-mid:#1e88e5;
+  --red:#d32f2f;--green:#16a34a;--amber:#d97706;--purple:#7c3aed;
+  --text:#1c2333;--muted:#607d8b;--white:#fff;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;}
+.nav-links a{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.85);text-decoration:none;
+  padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+.nav-links a.active{background:rgba(255,255,255,.2);color:#fff;font-weight:700;}
+main{padding:36px 40px;max-width:1100px;margin:0 auto;}
+
+/* Messages */
+.msg-wrap{margin-bottom:20px;}
+.msg{padding:12px 20px;border-radius:10px;margin-bottom:8px;font-size:.88rem;font-weight:600;}
+.msg-success{background:#f0fdf4;border:2px solid #bbf7d0;color:#16a34a;}
+.msg-warning{background:#fffbeb;border:2px solid #fde68a;color:#d97706;}
+.msg-error{background:#fef2f2;border:2px solid #fecaca;color:#dc2626;}
+.msg-info{background:#eff6ff;border:2px solid #bfdbfe;color:#1d4ed8;}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,var(--blue) 0%,#1e88e5 60%,#5e35b1 100%);
+  border-radius:20px;padding:36px 44px;margin-bottom:32px;display:flex;
+  align-items:center;justify-content:space-between;
+  box-shadow:0 8px 32px rgba(21,101,192,.25);}
+.hero-text h1{font-family:'Roboto',sans-serif;font-size:1.9rem;font-weight:700;color:#fff;margin-bottom:8px;}
+.hero-text p{color:rgba(255,255,255,.8);font-size:.93rem;max-width:520px;line-height:1.6;}
+.hero-badge{background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);
+  border-radius:8px;padding:20px 28px;text-align:center;min-width:140px;}
+.hero-badge-num{font-family:'Roboto',sans-serif;font-size:2.2rem;font-weight:700;color:#fff;}
+.hero-badge-label{color:rgba(255,255,255,.75);font-size:.75rem;font-weight:600;margin-top:2px;}
+
+/* Two-col layout */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:28px;}
+
+/* Card */
+.card{background:#fff;border-radius:8px;border:2px solid var(--border);overflow:hidden;}
+.card-header{padding:16px 22px;display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--border);}
+.card-header-icon{font-size:1.3rem;}
+.card-title{font-family:'Roboto',sans-serif;font-weight:700;font-size:.95rem;color:var(--text);}
+.card-subtitle{font-size:.75rem;color:var(--muted);margin-top:1px;}
+.card-body{padding:22px;}
+
+/* Upload zones */
+.upload-zone{border:2.5px dashed var(--border);border-radius:6px;padding:22px 18px;
+  text-align:center;cursor:pointer;transition:all .25s;background:#fafbfd;position:relative;}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--blue);background:var(--blue-light);}
+.upload-zone.has-file{border-color:var(--green);background:#f0fdf4;border-style:solid;}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-icon{font-size:1.8rem;margin-bottom:6px;}
+.upload-label{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:3px;}
+.upload-sublabel{font-size:.72rem;color:var(--muted);line-height:1.4;}
+.upload-filename{font-size:.78rem;font-weight:700;color:var(--green);margin-top:6px;}
+.fields-hint{margin-top:10px;background:#f5f8ff;border-radius:8px;padding:8px 12px;}
+.fields-hint code{font-size:.68rem;color:var(--blue);font-family:monospace;display:block;line-height:1.7;}
+
+/* Template dl btn */
+.tmpl-btn{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:700;
+  padding:5px 11px;border-radius:7px;background:#f0f4ff;color:var(--blue);text-decoration:none;
+  border:1.5px solid #bfdbfe;transition:all .2s;margin-top:10px;}
+.tmpl-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+/* Options card */
+.option-row{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1.5px solid #f0f4ff;}
+.option-row:last-child{border-bottom:none;}
+.option-check{margin-top:2px;accent-color:var(--blue);width:18px;height:18px;cursor:pointer;flex-shrink:0;}
+.option-text{flex:1;}
+.option-label{font-size:.88rem;font-weight:700;color:var(--text);cursor:pointer;}
+.option-desc{font-size:.75rem;color:var(--muted);margin-top:2px;line-height:1.5;}
+.option-warn{color:var(--red);}
+
+/* Submit */
+.submit-bar{background:#fff;border:2px solid var(--border);border-radius:8px;
+  padding:22px 28px;display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.submit-btn{padding:13px 32px;background:linear-gradient(135deg,var(--blue),#1e88e5);
+  color:#fff;font-size:.92rem;font-weight:700;font-family:'Roboto',sans-serif;
+  border:none;border-radius:6px;cursor:pointer;transition:all .25s;
+  box-shadow:0 4px 16px rgba(21,101,192,.3);}
+.submit-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(21,101,192,.4);}
+.submit-btn:active{transform:translateY(0);}
+.back-link{font-size:.83rem;color:var(--muted);text-decoration:none;font-weight:600;}
+.back-link:hover{color:var(--blue);}
+
+/* How-to steps */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+.step{background:#fff;border:2px solid var(--border);border-radius:7px;padding:18px 14px;text-align:center;}
+.step-num{width:32px;height:32px;border-radius:50%;background:var(--blue);color:#fff;
+  font-family:'Roboto',sans-serif;font-weight:700;font-size:.88rem;
+  display:flex;align-items:center;justify-content:center;margin:0 auto 10px;}
+.step-icon{font-size:1.5rem;margin-bottom:6px;}
+.step-title{font-family:'Roboto',sans-serif;font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:4px;}
+.step-desc{font-size:.7rem;color:var(--muted);line-height:1.5;}
+
+/* Recent logs */
+.log-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1.5px solid #f0f4ff;}
+.log-row:last-child{border-bottom:none;}
+.log-status{padding:3px 10px;border-radius:8px;font-size:.7rem;font-weight:700;}
+.log-success{background:#f0fdf4;color:#16a34a;}
+.log-partial{background:#fffbeb;color:#d97706;}
+.log-failed{background:#fef2f2;color:#dc2626;}
+.log-meta{flex:1;font-size:.78rem;color:var(--muted);}
+.log-counts{font-size:.72rem;color:var(--text);font-weight:600;}
+.section-heading{font-family:'Roboto',sans-serif;font-size:1.05rem;font-weight:700;
+  color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.section-heading::after{content:'';flex:1;height:2px;background:var(--border);border-radius:2px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.anim{animation:fadeUp .4s ease both;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/">← Dashboard</a>
+    <a href="/csv-upload/" class="active">📂 CSV Import</a>
+    <a href="/generate-smart/">⚡ Smart Generate</a>
+    <a href="/add-subject/">+ Subject</a>
+    <a href="/add-professor/">+ Professor</a>
+  
+    
+    <a href="/workload-report/" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
+  </div>
+</nav>
+
+<main>
+  {% if messages %}
+  <!-- Quick-action banner after import -->
+  <div style="background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;
+              padding:16px 24px;margin-bottom:16px;display:flex;align-items:center;
+              justify-content:space-between;gap:16px;">
+    <div style="color:#fff;">
+      <strong style="font-family:'Roboto',sans-serif;font-size:.95rem;">CSV imported successfully!</strong>
+      <p style="font-size:.82rem;opacity:.85;margin-top:3px;">
+        Now edit workload assignments or generate your timetable.
+      </p>
+    </div>
+    <div style="display:flex;gap:10px;flex-shrink:0;">
+      
+      <a href="/generate-smart/" style="background:rgba(255,255,255,.2);color:#fff;font-weight:700;
+         padding:8px 16px;border-radius:8px;text-decoration:none;font-size:.82rem;
+         border:1.5px solid rgba(255,255,255,.4);">
+        ⚡ Smart Generate
+      </a>
+      <a href="/workload-report/" style="background:rgba(255,255,255,.15);color:#fff;font-weight:700;
+         padding:8px 16px;border-radius:8px;text-decoration:none;font-size:.82rem;
+         border:1.5px solid rgba(255,255,255,.35);">
+        📋 Workload
+      </a>
+    </div>
+  </div>
+  <div class="msg-wrap">
+    {% for message in messages %}
+    <div class="msg {% if message.tags == 'error' %}msg-error{% elif message.tags == 'warning' %}msg-warning{% elif message.tags == 'info' %}msg-info{% else %}msg-success{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Hero -->
+  <div class="hero anim">
+    <div class="hero-text">
+      <h1>📂 Smart CSV Import</h1>
+      <p>Upload your data files and generate a complete timetable automatically. Supports subjects, professors, rooms, sections and department settings — all at once.</p>
+    </div>
+    <div style="display:flex;gap:14px;">
+      <div class="hero-badge">
+        <div class="hero-badge-num">5</div>
+        <div class="hero-badge-label">CSV Types</div>
+      </div>
+      <div class="hero-badge">
+        
+        <div class="hero-badge-label">Auto Generate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="section-heading anim">📋 How It Works</div>
+  <div class="steps anim" style="margin-bottom:32px;">
+    <div class="step"><div class="step-num">1</div><div class="step-icon">⬇️</div><div class="step-title">Download Templates</div><div class="step-desc">Get sample CSV files for each data type below</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-icon">✏️</div><div class="step-title">Fill Your Data</div><div class="step-desc">Add your departments, professors, rooms, sections &amp; subjects</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-icon">📤</div><div class="step-title">Upload Files</div><div class="step-desc">Upload all files at once — order doesn't matter</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-icon">⚙️</div><div class="step-title">Auto-Link</div><div class="step-desc">System links professors, rooms &amp; subjects to sections automatically</div></div>
+    <div class="step"><div class="step-num">5</div><div class="step-icon">⚡</div><div class="step-title">Generate</div><div class="step-desc">Smart scheduler runs with all constraints respected</div></div>
+  </div>
+
+  <!-- Upload Form -->
+  <form method="post" enctype="multipart/form-data" id="csvForm">
+    {% csrf_token %}
+
+    <div class="section-heading anim">📤 Upload CSV Files</div>
+    <div class="grid2 anim">
+
+      <!-- Subjects -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-icon">📚</div>
+          <div>
+            <div class="card-title">Subjects CSV</div>
+            <div class="card-subtitle">Define all subjects with type &amp; group constraints</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="zone-subjects">
+            <input type="file" name="subjects_csv" accept=".csv" onchange="markZone(this,'zone-subjects')">
+            <div class="upload-icon">📚</div>
+            <div class="upload-label">Click or drag subjects.csv</div>
+            <div class="upload-sublabel">subject_id · subject_name · subject_type · lectures_per_week · allowed_groups · specialization_required</div>
+            <div class="upload-filename" id="fname-subjects"></div>
+          </div>
+          <div class="fields-hint">
+            <code>subject_type: theory / lab / tutorial / nptel</code>
+            <code>allowed_groups: G1 / G2 / Both</code>
+            <code>specialization_required: Yes / No</code>
+          </div>
+          <a href="/csv-template/subjects/" class="tmpl-btn">⬇️ Download Template</a>
+        </div>
+      </div>
+
+      <!-- Professors -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-icon">👨‍🏫</div>
+          <div>
+            <div class="card-title">Professors CSV</div>
+            <div class="card-subtitle">Faculty with workload limits &amp; specializations</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="zone-profs">
+            <input type="file" name="professors_csv" accept=".csv" onchange="markZone(this,'zone-profs')">
+            <div class="upload-icon">👨‍🏫</div>
+            <div class="upload-label">Click or drag professors.csv</div>
+            <div class="upload-sublabel">professor_id · professor_name · max_workload_hours_per_week · specialization_subjects</div>
+            <div class="upload-filename" id="fname-profs"></div>
+          </div>
+          <div class="fields-hint">
+            <code>max_workload_hours_per_week: e.g. 18</code>
+            <code>specialization_subjects: comma-separated</code>
+          </div>
+          <a href="/csv-template/professors/" class="tmpl-btn">⬇️ Download Template</a>
+        </div>
+      </div>
+
+      <!-- Rooms -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-icon">🚪</div>
+          <div>
+            <div class="card-title">Rooms CSV</div>
+            <div class="card-subtitle">Classrooms &amp; labs with subject restrictions</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="zone-rooms">
+            <input type="file" name="rooms_csv" accept=".csv" onchange="markZone(this,'zone-rooms')">
+            <div class="upload-icon">🚪</div>
+            <div class="upload-label">Click or drag rooms.csv</div>
+            <div class="upload-sublabel">room_id · room_name · room_type · capacity · allowed_subjects</div>
+            <div class="upload-filename" id="fname-rooms"></div>
+          </div>
+          <div class="fields-hint">
+            <code>room_type: classroom / lab</code>
+            <code>allowed_subjects: "all" or comma-separated names</code>
+          </div>
+          <a href="/csv-template/rooms/" class="tmpl-btn">⬇️ Download Template</a>
+        </div>
+      </div>
+
+      <!-- Sections -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-header-icon">🏫</div>
+          <div>
+            <div class="card-title">Sections CSV</div>
+            <div class="card-subtitle">Sections with group splitting &amp; fixed rooms</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="zone-sections">
+            <input type="file" name="sections_csv" accept=".csv" onchange="markZone(this,'zone-sections')">
+            <div class="upload-icon">🏫</div>
+            <div class="upload-label">Click or drag sections.csv</div>
+            <div class="upload-sublabel">department · year · section · group · fixed_room · course · <strong>free_day</strong></div>
+            <div class="upload-filename" id="fname-sections"></div>
+          </div>
+          <div class="fields-hint">
+            <code>year: 1st / 2nd / 3rd / 4th</code>
+            <code>group: G1 / G2</code>
+            <code>fixed_room: room name (optional)</code>
+          </div>
+          <a href="/csv-template/sections/" class="tmpl-btn">⬇️ Download Template</a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Dept Settings (optional) -->
+    <div class="section-heading anim">⚙️ Department Settings</div>
+    <div class="card anim" style="margin-bottom:28px;">
+      <div class="card-header">
+        <div class="card-header-icon">⚙️</div>
+        <div>
+          <div class="card-title">Department Settings CSV <span style="font-size:.72rem;background:#fffbeb;color:#d97706;border-radius:6px;padding:2px 8px;border:1.5px solid #fde68a;margin-left:8px;">Optional</span></div>
+          <div class="card-subtitle">Customise lunch breaks &amp; start times per department</div>
+        </div>
+      </div>
+      <div class="card-body" style="display:flex;gap:28px;align-items:flex-start;">
+        <div style="flex:1;">
+          <div class="upload-zone" id="zone-dept" style="padding:14px 18px;">
+            <input type="file" name="dept_settings_csv" accept=".csv" onchange="markZone(this,'zone-dept')">
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div class="upload-icon" style="margin:0;font-size:1.4rem;">⚙️</div>
+              <div>
+                <div class="upload-label" style="text-align:left;">Click to upload dept_settings.csv</div>
+                <div class="upload-sublabel" style="text-align:left;">department · lunch_start_time · lunch_end_time · department_start_time</div>
+                <div class="upload-filename" id="fname-dept"></div>
+              </div>
+            </div>
+          </div>
+          <a href="/csv-template/dept_settings/" class="tmpl-btn">⬇️ Download Template</a>
+        </div>
+        <div style="flex:1;background:#f5f8ff;border-radius:6px;padding:16px 18px;border:1.5px solid #bfdbfe;">
+          <div style="font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;color:var(--blue);margin-bottom:8px;">📌 Manual Override Available</div>
+          <div style="font-size:.78rem;color:var(--muted);line-height:1.65;">
+            You can also set department settings individually via<br>
+            <strong>Dashboard → Department → ⚙️ Settings</strong><br><br>
+            Slot mapping: 1=9:00, 2=9:50, 3=10:40, 4=11:30, 5=12:20, 6=2:00, 7=2:50
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="section-heading anim">🛠️ Import Options</div>
+    <div class="grid2 anim" style="margin-bottom:28px;">
+      <div class="card">
+        <div class="card-body">
+          <div class="option-row">
+            <input type="checkbox" name="auto_generate" id="auto_generate" class="option-check" checked>
+            <div class="option-text">
+              <label for="auto_generate" class="option-label">⚡ Auto-generate timetable after import</label>
+              <div class="option-desc">Runs the smart scheduler immediately after importing all data. Uses all constraints: workload limits, room restrictions, specializations &amp; lunch breaks.</div>
+            </div>
+          </div>
+          <div class="option-row">
+            <input type="checkbox" name="clear_existing" id="clear_existing" class="option-check">
+            <div class="option-text">
+              <label for="clear_existing" class="option-label option-warn">⚠️ Clear existing data before import</label>
+              <div class="option-desc option-warn">Deletes all current subjects, sections, and generated timetable slots before importing new data. Cannot be undone.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="background:linear-gradient(135deg,#f0f7ff,#e8f4fd);">
+        <div class="card-body">
+          <div style="font-family:'Roboto',sans-serif;font-size:.88rem;font-weight:700;color:var(--blue);margin-bottom:12px;">🧠 Smart Scheduler Features</div>
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:7px;">
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Professor workload limits enforced</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Lab rooms restricted to allowed subjects</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Specialization-matched professor assignment</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Fixed classroom for sections</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> G1/G2 group splitting for labs &amp; tutorials</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> NPTEL only scheduled after 2:00 PM</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Balanced workload distribution</li>
+            <li style="font-size:.78rem;color:var(--text);display:flex;gap:7px;"><span>✅</span> Professor &amp; room clash prevention</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit Bar -->
+    <div class="submit-bar anim">
+      <a href="/" class="back-link">← Back to Dashboard</a>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <a href="/generate-smart/" style="padding:11px 22px;background:#f0f4ff;color:var(--blue);
+          border-radius:10px;font-size:.83rem;font-weight:700;text-decoration:none;border:2px solid #bfdbfe;">
+          ⚡ Generate Without Import
+        </a>
+        <button type="submit" class="submit-btn" id="submitBtn">
+          📤 Import &amp; Process
+        </button>
+      </div>
+    </div>
+
+  </form>
+
+  <!-- Recent Import Logs -->
+  {% if recent_logs %}
+  <div style="margin-top:32px;">
+    <div class="section-heading">📋 Recent Import History</div>
+    <div class="card">
+      <div class="card-body" style="padding:16px 22px;">
+        {% for log in recent_logs %}
+        <div class="log-row">
+          <div>
+            <span class="log-status {% if log.status == 'SUCCESS' %}log-success{% elif log.status == 'PARTIAL' %}log-partial{% else %}log-failed{% endif %}">
+              {{ log.get_status_display }}
+            </span>
+          </div>
+          <div class="log-meta">{{ log.imported_at|date:"d M Y H:i" }}</div>
+          <div class="log-counts">
+            {% if log.rooms_created %}🚪 {{ log.rooms_created }} rooms &nbsp;{% endif %}
+            {% if log.professors_created %}👨‍🏫 {{ log.professors_created }} profs &nbsp;{% endif %}
+            {% if log.sections_created %}🏫 {{ log.sections_created }} sections &nbsp;{% endif %}
+            {% if log.subjects_created %}📚 {{ log.subjects_created }} subjects{% endif %}
+          </div>
+          {% if log.errors %}
+          <div style="font-size:.68rem;color:#dc2626;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.errors }}">
+            ❌ {{ log.errors|truncatechars:60 }}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</main>
+
+<script>
+function markZone(input, zoneId) {
+  var zone = document.getElementById(zoneId);
+  var fname = document.getElementById('fname-' + zoneId.replace('zone-',''));
+  if (input.files && input.files[0]) {
+    zone.classList.add('has-file');
+    fname.textContent = '✅ ' + input.files[0].name;
+  } else {
+    zone.classList.remove('has-file');
+    fname.textContent = '';
+  }
+}
+
+// Drag-over visual
+document.querySelectorAll('.upload-zone').forEach(function(zone) {
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', function() { zone.classList.remove('drag-over'); });
+});
+
+// Submit loading state
+document.getElementById('csvForm').addEventListener('submit', function() {
+  var btn = document.getElementById('submitBtn');
+  btn.textContent = '⏳ Importing...';
+  btn.disabled = true;
+  btn.style.opacity = '0.75';
+});
+</script>
+</body>
+</html>

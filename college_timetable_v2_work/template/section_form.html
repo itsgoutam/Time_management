@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if edit %}Edit{% else %}Add{% endif %} Section</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;
+  --red:#e02424;--text:#1c2333;--muted:#607d8b;--green:#16a34a;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 24px;}
+.form-card{background:var(--card);border:2px solid var(--border);border-radius:20px;
+  padding:44px;width:100%;max-width:540px;box-shadow:0 4px 24px rgba(26,86,219,.08);
+  animation:pop .45s ease both;}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(14px)}to{opacity:1;transform:none}}
+.form-top{display:flex;align-items:center;gap:14px;margin-bottom:28px;
+  padding-bottom:20px;border-bottom:2px solid var(--border);}
+.form-icon{width:48px;height:48px;background:var(--blue-light);border:2px solid #bfdbfe;
+  border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.form-top h1{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);}
+.form-top p{font-size:.82rem;color:var(--muted);margin-top:2px;}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--muted);margin-bottom:7px;}
+.field input,.field select{width:100%;padding:11px 14px;background:#f8faff;
+  border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:.9rem;
+  font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.field .help{font-size:.73rem;color:var(--muted);margin-top:4px;}
+.custom-row{background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px 14px;
+  margin-bottom:18px;display:none;}
+.custom-row.visible{display:block;}
+.custom-row label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#92400e;margin-bottom:6px;display:block;}
+.custom-row input{width:100%;padding:10px 13px;background:#fff;border:2px solid #fde68a;
+  border-radius:8px;font-size:.9rem;color:var(--text);}
+.section-divider{border:none;border-top:2px dashed var(--border);margin:20px 0;}
+.info-box{background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 14px;
+  font-size:.8rem;color:var(--muted);margin-bottom:20px;}
+.info-box strong{color:var(--blue);}
+.buttons{display:flex;gap:12px;margin-top:24px;}
+.submit-btn{flex:1;padding:13px;background:var(--blue);color:#fff;border:none;
+  border-radius:11px;font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;
+  cursor:pointer;transition:all .2s;}
+.submit-btn:hover{background:#1648c0;box-shadow:0 4px 16px rgba(26,86,219,.35);}
+.cancel-btn{padding:13px 20px;background:var(--red);color:#fff;border:none;
+  border-radius:11px;font-size:.9rem;font-weight:600;cursor:pointer;text-decoration:none;
+  display:inline-flex;align-items:center;transition:all .2s;}
+.cancel-btn:hover{background:#c81e1e;}
+/* Group checkboxes */
+.group-checkboxes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+.group-check-item{display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:#f4f7ff;border:2px solid var(--border);border-radius:8px;
+  cursor:pointer;transition:all .18s;user-select:none;}
+.group-check-item:hover{border-color:var(--blue);background:var(--blue-light);}
+.group-check-item input[type="checkbox"]{width:18px;height:18px;accent-color:var(--blue);
+  cursor:pointer;flex-shrink:0;}
+.group-check-item input[type="checkbox"]:checked + .group-check-label{color:var(--blue);font-weight:600;}
+.group-check-item:has(input:checked){border-color:var(--blue);background:var(--blue-light);}
+.group-check-label{font-size:.88rem;font-weight:500;color:var(--text);}
+</style>
+<script>
+function toggleCustomYear() {
+  var y = document.getElementById('id_year').value;
+  var row = document.getElementById('custom-year-row');
+  row.classList.toggle('visible', y === 'CUSTOM');
+  if (y !== 'CUSTOM') document.getElementById('id_custom_year').value = '';
+}
+function toggleCustomSection() {
+  var s = document.getElementById('id_section_name').value;
+  var row = document.getElementById('custom-section-row');
+  row.classList.toggle('visible', s === 'CUSTOM');
+  if (s !== 'CUSTOM') document.getElementById('id_custom_section_name').value = '';
+}
+window.onload = function() {
+  toggleCustomYear();
+  toggleCustomSection();
+}
+</script>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</nav>
+<main>
+  <div class="form-card">
+    <div class="form-top">
+      <div class="form-icon">👥</div>
+      <div>
+        <h1>{% if edit %}Edit Section{% else %}Add Section / Group{% endif %}</h1>
+        <p>{% if edit %}Update section details below.{% else %}Add a new section/group with optional custom names.{% endif %}</p>
+      </div>
+    </div>
+    <div class="info-box">
+      🎓 <strong>Default:</strong> 4 academic years (1st–4th), Sections A–E.<br>
+      Select <strong>Custom Year</strong> or <strong>Custom Section</strong> to add extras like 5th Year or Section F.
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field">
+        <label>Course</label>
+        {{ form.course }}
+        {% if form.course.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.course.errors.0 }}</div>{% endif %}
+      </div>
+      <hr class="section-divider">
+      <div class="field">
+        <label>Academic Year</label>
+        {{ form.year }}
+        <div class="help">Default: 1st–4th Year. Choose "Custom Year" to add a 5th Year, etc.</div>
+        {% if form.year.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.year.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="custom-row {% if form.initial.year == 'CUSTOM' or form.instance.year == 'CUSTOM' %}visible{% endif %}" id="custom-year-row">
+        <label>✏️ Custom Year Name</label>
+        {{ form.custom_year }}
+        {% if form.custom_year.errors %}<div style="color:#92400e;font-size:.78rem;margin-top:4px;">{{ form.custom_year.errors.0 }}</div>{% endif %}
+      </div>
+      <hr class="section-divider">
+      <div class="field">
+        <label>Section</label>
+        {{ form.section_name }}
+        <div class="help">Default: Sections A–E. Choose "Custom Section" to add F, G, Alpha, etc.</div>
+        {% if form.section_name.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.section_name.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="custom-row {% if form.instance.section_name == 'CUSTOM' %}visible{% endif %}" id="custom-section-row">
+        <label>✏️ Custom Section Name</label>
+        {{ form.custom_section_name }}
+        {% if form.custom_section_name.errors %}<div style="color:#92400e;font-size:.78rem;margin-top:4px;">{{ form.custom_section_name.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label>Group</label>
+        {% if edit %}
+          {# Edit mode: single dropdown (can't change group of existing record) #}
+          {{ form.group }}
+          {% if form.group.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.group.errors.0 }}</div>{% endif %}
+        {% else %}
+          {# Add mode: checkboxes — select one or more groups to create at once #}
+          <div class="group-checkboxes">
+            <label class="group-check-item">
+              <input type="checkbox" name="groups" value="G1" checked>
+              <span class="group-check-label">G1 — Group 1</span>
+            </label>
+            <label class="group-check-item">
+              <input type="checkbox" name="groups" value="G2">
+              <span class="group-check-label">G2 — Group 2</span>
+            </label>
+            <label class="group-check-item">
+              <input type="checkbox" name="groups" value="G3">
+              <span class="group-check-label">G3 — Group 3</span>
+            </label>
+            <label class="group-check-item">
+              <input type="checkbox" name="groups" value="G4">
+              <span class="group-check-label">G4 — Group 4</span>
+            </label>
+          </div>
+          <div class="help" style="margin-top:6px;">Select the groups you want to create for this section. One section record will be created per selected group.</div>
+        {% endif %}
+      </div>
+      <hr class="section-divider">
+      <div class="field">
+        <label>🏖️ Free Day / Holiday</label>
+        {{ form.free_day }}
+        <div class="help">Optional: assign one weekly holiday to this section. No lectures will be scheduled on that day.</div>
+        {% if form.free_day.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.free_day.errors.0 }}</div>{% endif %}
+      </div>
+      <hr class="section-divider">
+      <div class="field">
+        <label>⏰ Section Start Time</label>
+        {{ form.section_start_slot }}
+        <div class="help">Optional: override the start time for this section only (e.g. 9:50 for a late-start group). Leave blank to use the department default.</div>
+        {% if form.section_start_slot.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.section_start_slot.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="buttons">
+        <button type="submit" class="submit-btn">{% if edit %}✅ Update Section{% else %}✅ Save Section{% endif %}</button>
+        <a href="/" class="cancel-btn">✖ Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+</body>
+</html>

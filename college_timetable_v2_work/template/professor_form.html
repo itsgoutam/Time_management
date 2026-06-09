@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if edit %}Edit{% else %}Add{% endif %} Professor — </title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;
+  --red:#e02424;--green:#16a34a;--text:#1c2333;--muted:#607d8b;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:48px 24px;}
+.form-card{background:var(--card);border:2px solid var(--border);border-radius:20px;
+  padding:0;width:100%;max-width:540px;box-shadow:0 4px 24px rgba(26,86,219,.08);
+  animation:pop .45s ease both;overflow:hidden;}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(14px)}to{opacity:1;transform:none}}
+.form-header{background:linear-gradient(135deg,var(--blue),#1e88e5);padding:28px 36px;
+  display:flex;align-items:center;gap:14px;}
+.form-icon{width:52px;height:52px;background:rgba(255,255,255,.2);
+  border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;}
+.form-header h1{font-family:'Roboto',sans-serif;font-size:1.4rem;font-weight:700;color:#fff;}
+.form-header p{font-size:.8rem;color:rgba(255,255,255,.75);margin-top:3px;}
+.form-body{padding:32px 36px;}
+.field{margin-bottom:20px;}
+.field label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);margin-bottom:7px;}
+.field input,.field select,.field textarea{width:100%;padding:11px 14px;background:#f8faff;
+  border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:.88rem;
+  font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.field textarea{resize:vertical;min-height:72px;}
+.field .help{font-size:.72rem;color:var(--muted);margin-top:5px;line-height:1.5;}
+.section-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--blue);border-bottom:2px solid var(--blue-light);padding-bottom:6px;
+  margin-bottom:16px;margin-top:24px;}
+.info-chip{display:inline-flex;align-items:center;gap:5px;background:var(--blue-light);
+  color:var(--blue);border-radius:8px;padding:5px 12px;font-size:.75rem;font-weight:700;
+  margin-bottom:16px;}
+.submit-btn{width:100%;padding:13px;background:linear-gradient(135deg,var(--blue),#1e88e5);
+  color:#fff;border:none;border-radius:11px;font-family:'Roboto',sans-serif;
+  font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
+.submit-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(21,101,192,.3);}
+.cancel-link{display:block;text-align:center;margin-top:14px;font-size:.82rem;color:var(--muted);text-decoration:none;}
+.cancel-link:hover{color:var(--blue);}
+.error-msg{font-size:.75rem;color:var(--red);margin-top:4px;font-weight:600;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</nav>
+<main>
+  <div class="form-card">
+    <div class="form-header">
+      <div class="form-icon">👨‍🏫</div>
+      <div>
+        <h1>{% if edit %}Edit Professor{% else %}Add Professor{% endif %}</h1>
+        <p>{% if edit %}Update professor details, workload limits and specializations.{% else %}Add a faculty member with scheduling constraints.{% endif %}</p>
+      </div>
+    </div>
+    <div class="form-body">
+      <form method="POST">
+        {% csrf_token %}
+
+        <div class="section-label">👤 Basic Info</div>
+        <div class="field">
+          <label>{{ form.name.label }}</label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="error-msg">{{ form.name.errors|join:", " }}</div>{% endif %}
+        </div>
+        <div class="field">
+          <label>{{ form.email.label }}</label>
+          {{ form.email }}
+          {% if form.email.errors %}<div class="error-msg">{{ form.email.errors|join:", " }}</div>{% endif %}
+        </div>
+
+        <div class="section-label">⏱️ Workload Control</div>
+        <div class="info-chip">🛡️ Smart scheduler enforces this limit automatically</div>
+        <div class="field">
+          <label>{{ form.max_workload_hours_per_week.label }}</label>
+          {{ form.max_workload_hours_per_week }}
+          <div class="help">Maximum teaching hours per week. Default: 20. The smart scheduler will avoid assigning beyond this limit and pick the least-loaded eligible professor.</div>
+          {% if form.max_workload_hours_per_week.errors %}<div class="error-msg">{{ form.max_workload_hours_per_week.errors|join:", " }}</div>{% endif %}
+        </div>
+
+        <div class="section-label">🎓 Specialization</div>
+        <div class="field">
+          <label>{{ form.specialization_subjects.label }}</label>
+          {{ form.specialization_subjects }}
+          <div class="help">Comma-separated subject names or codes this professor specializes in. e.g. <code>Machine Learning, Deep Learning, CS501</code>. Leave blank if no specialization restriction needed. Only used when a subject has "Requires Specialization" checked.</div>
+          {% if form.specialization_subjects.errors %}<div class="error-msg">{{ form.specialization_subjects.errors|join:", " }}</div>{% endif %}
+        </div>
+
+        <button type="submit" class="submit-btn">{% if edit %}✅ Update Professor{% else %}✅ Add Professor{% endif %}</button>
+        <a href="/" class="cancel-link">← Cancel, go back</a>
+      </form>
+    </div>
+  </div>
+</main>
+</body>
+</html>

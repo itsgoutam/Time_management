@@ -1,0 +1,454 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workload Report — </title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--border:#e0e3ea;
+  --blue:#1565c0;--blue-d:#0d47a1;--blue-light:#e3f0ff;
+  --red:#d32f2f;--red-light:#ffebee;
+  --green:#16a34a;--green-light:#dcfce7;
+  --amber:#d97706;--amber-light:#fef3c7;
+  --purple:#7c3aed;--purple-light:#f3e8ff;
+  --text:#1c2333;--muted:#607d8b;
+}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);}
+
+/* ── Nav ── */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 32px;
+  height:64px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand img{height:42px;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.05rem;color:#fff;}
+.nav-right{display:flex;gap:8px;}
+.nav-btn{font-size:.8rem;font-weight:600;padding:7px 14px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;cursor:pointer;
+  background:transparent;transition:all .2s;}
+.nav-btn:hover{background:rgba(255,255,255,.15);}
+.nav-btn-white{background:#fff!important;color:var(--blue)!important;border-color:#fff!important;}
+.nav-btn-green{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;}
+.nav-btn-amber{background:var(--amber)!important;color:#fff!important;border-color:var(--amber)!important;}
+
+/* ── Controls / filter bar ── */
+.controls-bar{display:flex;align-items:center;gap:14px;padding:20px 32px;flex-wrap:wrap;}
+.ctrl-group{display:flex;align-items:center;gap:7px;}
+.ctrl-lbl{font-size:.77rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+select.ctrl-sel{padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;background:#fff;}
+.sbtn{padding:8px 18px;border-radius:9px;font-size:.82rem;font-weight:700;
+  border:none;cursor:pointer;text-decoration:none;transition:all .2s;display:inline-block;}
+.sbtn-white {background:#fff;color:var(--blue);border:1.5px solid var(--border);}
+.sbtn-green {background:var(--green);color:#fff;}  .sbtn-green:hover{background:#15803d;}
+.sbtn-amber {background:var(--amber);color:#fff;}  .sbtn-amber:hover{background:#b45309;}
+.spacer{flex:1;}
+
+/* ── Summary cards ── */
+.summary-cards{display:flex;gap:14px;padding:0 32px 24px;flex-wrap:wrap;}
+.sc{background:#fff;border:1.5px solid var(--border);border-radius:6px;
+  padding:14px 22px;flex:1;min-width:120px;box-shadow:0 1px 6px rgba(0,0,0,.04);}
+.sc .val{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--blue);}
+.sc .lbl{font-size:.74rem;color:var(--muted);margin-top:2px;}
+
+/* ── Report area ── */
+.report-area{padding:0 32px 48px;}
+
+/* ── College header (Amritsar format) ── */
+.college-header{
+  border:2px solid #333;
+  display:grid;grid-template-columns:170px 1fr 230px;
+  background:#fff;
+}
+.ch-logo{padding:10px 14px;display:flex;align-items:center;justify-content:center;
+  border-right:2px solid #333;}
+.ch-logo img{max-height:70px;max-width:145px;object-fit:contain;}
+.ch-logo-text{font-family:'Roboto',sans-serif;font-size:.72rem;font-weight:700;
+  color:var(--blue);text-align:center;line-height:1.4;}
+.ch-center{padding:10px 16px;text-align:center;border-right:2px solid #333;
+  display:flex;flex-direction:column;justify-content:center;}
+.ch-center .sem-title{font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;color:#111;}
+.ch-center .sem-period{font-size:.88rem;font-weight:600;color:#333;margin-top:3px;}
+.ch-right{padding:10px 16px;display:flex;flex-direction:column;justify-content:center;text-align:center;}
+.ch-right .dept-title{font-family:'Roboto',sans-serif;font-size:.88rem;font-weight:700;
+  color:#111;line-height:1.35;}
+.date-line{background:#fff;border:2px solid #333;border-top:none;
+  padding:4px 16px;text-align:right;font-size:.78rem;color:#333;font-weight:600;}
+
+/* ── Workload table ── */
+.wl-table-wrap{background:#fff;border:2px solid #333;border-top:none;margin-bottom:36px;}
+.wl-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+.wl-table thead tr.col-headers th{
+  background:#e8f0fe;border:1px solid #aab;padding:8px 10px;
+  font-family:'Roboto',sans-serif;font-size:.75rem;font-weight:700;
+  text-align:center;white-space:nowrap;color:#1a2a4a;}
+.wl-table thead tr.col-headers th:nth-child(-n+4){text-align:left;}
+.wl-table tbody td{border:1px solid #ccd;padding:7px 10px;vertical-align:middle;}
+.wl-table tbody td.num{text-align:center;font-weight:700;}
+.wl-table tbody td.total-cell{
+  text-align:center;font-family:'Roboto',sans-serif;font-weight:700;
+  font-size:.9rem;color:var(--blue-d);}
+
+/* Row types */
+.wl-table tbody tr.data-row:hover{background:#f5f8ff;}
+.wl-table tbody tr.prof-sub td{
+  background:#dbeafe;font-family:'Roboto',sans-serif;font-weight:700;
+  font-size:.78rem;color:var(--blue-d);border-color:#bcd;}
+.wl-table tbody tr.prof-sub td.sub-label{
+  font-style:italic;padding-left:22px;color:var(--blue);}
+.wl-table tfoot tr.dept-total td{
+  background:#1565c0;color:#fff;font-family:'Roboto',sans-serif;
+  font-weight:700;font-size:.82rem;border:1px solid #aab;
+  padding:9px 10px;text-align:center;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.wl-table tfoot tr.dept-total td:first-child{text-align:left;}
+
+/* Status badges */
+.sb{display:inline-flex;align-items:center;gap:3px;
+  padding:2px 8px;border-radius:6px;font-size:.68rem;font-weight:700;}
+.sb-ok  {background:var(--green-light);color:#14532d;}
+.sb-near{background:var(--amber-light);color:#92400e;}
+.sb-over{background:var(--red-light);color:var(--red);}
+.sb-zero{background:#f1f5f9;color:var(--muted);}
+
+/* ── Grand total table ── */
+.section-head{font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;
+  color:var(--text);margin:8px 0 12px;display:flex;align-items:center;gap:8px;}
+.section-head::after{content:'';flex:1;height:2px;background:var(--border);border-radius:2px;}
+.gt-wrap{padding:0 32px 48px;}
+.gt-table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff;
+  border-radius:6px;overflow:hidden;border:1.5px solid var(--border);
+  box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.gt-table thead th{background:var(--blue-d);color:#fff;padding:11px 16px;
+  font-family:'Roboto',sans-serif;font-size:.75rem;font-weight:700;
+  text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.gt-table thead th:first-child,.gt-table thead th:nth-child(2){text-align:left;}
+.gt-table tbody td{padding:9px 16px;border-bottom:1px solid var(--border);}
+.gt-table tbody td.num{text-align:center;font-weight:700;}
+.gt-table tbody tr:hover{background:#f5f8ff;}
+.gt-table tfoot td{padding:10px 16px;font-family:'Roboto',sans-serif;font-weight:700;
+  font-size:.82rem;background:#dbeafe;color:var(--blue-d);
+  border-top:2px solid var(--border);text-align:center;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.gt-table tfoot td:first-child,.gt-table tfoot td:nth-child(2){text-align:left;}
+
+/* ── Print ── */
+@page{
+  size: A4 landscape;
+  margin: 15mm 12mm 18mm;
+  @bottom-right{ content: "Page " counter(page) " of " counter(pages); font-size:9pt; }
+}
+@media print{
+  nav,.controls-bar,.summary-cards,.sbtn,.nav-btn,#wlSearch,.no-print{display:none!important;}
+  .gt-wrap{padding:0;margin-top:8px;}
+  body{background:#fff;}
+  .report-area{padding:0;}
+  .dept-section{page-break-after:always;}
+  .dept-section:last-child{page-break-after:avoid;}
+  .college-header,.date-line,.wl-table-wrap{
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .wl-table thead tr.col-headers th,
+  .wl-table tbody tr.prof-sub td,
+  .wl-table tfoot tr.dept-total td{
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+}
+
+/* ── Empty state ── */
+.empty{text-align:center;padding:80px 0;color:var(--muted);}
+.empty .icon{font-size:3rem;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC" onerror="this.style.display='none'">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-right">
+    <a href="/" class="nav-btn">← Dashboard</a>
+    
+    <a href="/workload-report/csv/" class="nav-btn nav-btn-green">📥 Export CSV</a>
+    <button class="nav-btn nav-btn-amber" onclick="window.print()">🖨️ Print / PDF</button>
+  </div>
+</nav>
+
+<!-- Filter bar -->
+<form method="get">
+<div class="controls-bar">
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">Department</span>
+    <select class="ctrl-sel" name="dept" onchange="this.form.submit()">
+      <option value="">All Departments</option>
+      {% for d in departments %}
+        <option value="{{ d.id }}" {% if dept_filter_id == d.id|stringformat:"s" %}selected{% endif %}>
+          {{ d.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">Search</span>
+    <input type="text" id="wlSearch" name="q" placeholder="Faculty / Subject / Code…"
+           value="{{ request.GET.q|default:'' }}"
+           style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;
+                  font-size:.82rem;width:220px;outline:none;"
+           oninput="filterWorkload(this.value)"
+           onfocus="this.style.borderColor='var(--blue)'"
+           onblur="this.style.borderColor='var(--border)'">
+  </div>
+  <div class="spacer"></div>
+  <span id="wlVisibleCount" style="font-size:.78rem;color:var(--muted);font-weight:600;"></span>
+  {% if dept_filter_id %}
+    <a href="/workload-report/" class="sbtn sbtn-white">✕ Clear</a>
+    <a href="/workload-report/csv/?dept={{ dept_filter_id }}" class="sbtn" style="background:#7c3aed;color:#fff;">📥 Dept CSV</a>
+  {% else %}
+    <a href="/workload-report/csv/" class="sbtn sbtn-green">📥 All CSV</a>
+  {% endif %}
+  <button type="button" class="sbtn sbtn-amber" onclick="window.print()">🖨️ Download PDF</button>
+</div>
+</form>
+
+<!-- Summary cards -->
+<div class="summary-cards">
+  <div class="sc"><div class="val">{{ grand_total.total }}</div><div class="lbl">Total Workload hrs/wk</div></div>
+  <div class="sc"><div class="val">{{ grand_total.l }}</div><div class="lbl">Total Lectures (L)</div></div>
+  <div class="sc"><div class="val">{{ grand_total.t }}</div><div class="lbl">Total Tutorials (T)</div></div>
+  <div class="sc"><div class="val">{{ grand_total.p }}</div><div class="lbl">Total Practicals (P)</div></div>
+  <div class="sc"><div class="val">{{ departments|length }}</div><div class="lbl">Departments</div></div>
+</div>
+
+<!-- Per-department report -->
+<div class="report-area">
+{% if dept_profs %}
+
+  {% for dept_name, prof_map in dept_profs.items %}
+  <div class="dept-section">
+
+    <!-- Per-dept actions -->
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px;" class="no-print">
+      <button onclick="printDeptSection(this)"
+              style="background:var(--amber);color:#fff;border:none;border-radius:8px;
+                     padding:6px 14px;font-size:.76rem;font-weight:700;cursor:pointer;">
+        🖨️ Print this dept
+      </button>
+      <a href="/workload-report/csv/?dept={{ request.GET.dept }}"
+         style="background:var(--blue-light);color:var(--blue);font-weight:700;
+                padding:6px 14px;border-radius:8px;text-decoration:none;font-size:.76rem;">
+        📥 Dept CSV
+      </a>
+    </div>
+    <!-- Amritsar-style college header -->
+    <div class="college-header">
+      <div class="ch-logo">
+        <img src="/static/agclogo.jpg" alt="AGC"
+             onerror="this.outerHTML='<div class=ch-logo-text>AMRITSAR<br>GROUP OF<br>COLLEGES</div>'">
+      </div>
+      <div class="ch-center">
+        <div class="sem-title">Workload</div>
+        <div class="sem-period">{{ sem_period }}</div>
+      </div>
+      <div class="ch-right">
+        <div class="dept-title">Department of<br>{{ dept_name }}</div>
+      </div>
+    </div>
+    <div class="date-line">Date: {{ today|date:"d.m.Y" }}</div>
+
+    <div class="wl-table-wrap">
+      <table class="wl-table">
+        <thead>
+          <tr class="col-headers">
+            <th style="width:36px;">#</th>
+            <th>Faculty Name</th>
+            <th>Subject Name</th>
+            <th>Subject Code</th>
+            <th>Class-Sem</th>
+            <th>Group</th>
+            <th style="width:42px;">L</th>
+            <th style="width:42px;">T</th>
+            <th style="width:42px;">P</th>
+            <th style="width:64px;">Total</th>
+            <th style="width:80px;">Contact Hrs</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for prof_id, prof in prof_map.items %}
+            {% for row in prof.rows %}
+            <tr class="data-row">
+              <td class="num" style="color:#aaa;font-size:.72rem;">{{ forloop.counter }}</td>
+              <td><strong>{{ prof.name }}</strong></td>
+              <td>{{ row.subject }}</td>
+              <td style="font-weight:700;color:var(--blue);font-size:.78rem;">{{ row.code|default:"—" }}</td>
+              <td style="white-space:nowrap;font-size:.8rem;">{{ row.class_sem }}</td>
+              <td style="text-align:center;"><strong>{{ row.group }}</strong></td>
+              <td class="num">{{ row.l }}</td>
+              <td class="num">{{ row.t }}</td>
+              <td class="num">{{ row.p }}</td>
+              <td class="total-cell">{{ row.total }}</td>
+              <td class="num" style="font-size:.75rem;color:#7c3aed;font-weight:700;white-space:nowrap;">{{ row.time_display }}</td>
+              <td></td>
+            </tr>
+            {% endfor %}
+            {# ── Professor subtotal row ── #}
+            <tr class="prof-sub">
+              <td colspan="6" class="sub-label">
+                ↳ {{ prof.name }} &nbsp;—&nbsp; Sub-total
+              </td>
+              <td class="num">{{ prof.l }}</td>
+              <td class="num">{{ prof.t }}</td>
+              <td class="num">{{ prof.p }}</td>
+              <td class="total-cell">{{ prof.total }}</td>
+              <td class="num" style="font-size:.8rem;color:#7c3aed;font-weight:700;white-space:nowrap;">{{ prof.time_display }}</td>
+              <td style="text-align:center;">
+                {% if prof.total == 0 %}
+                  <span class="sb sb-zero">No load</span>
+                {% elif prof.max > 0 and prof.total > prof.max %}
+                  <span class="sb sb-over">⚠️ Over (max {{ prof.max }})</span>
+                {% elif prof.max > 0 and prof.total >= prof.max|add:"-2" %}
+                  <span class="sb sb-near">Near (max {{ prof.max }})</span>
+                {% else %}
+                  <span class="sb sb-ok">✓ OK{% if prof.max > 0 %} / {{ prof.max }}{% endif %}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          {% with dt=dept_totals|dict_get:dept_name %}
+          <tr class="dept-total">
+            <td colspan="6">Department Total — {{ dept_name }}</td>
+            <td>{{ dt.l }}</td>
+            <td>{{ dt.t }}</td>
+            <td>{{ dt.p }}</td>
+            <td>{{ dt.total }}</td>
+            <td style="font-size:.78rem;font-weight:700;">{{ dt.time_display }}</td>
+            <td></td>
+          </tr>
+          {% endwith %}
+        </tfoot>
+      </table>
+    </div>
+
+  </div>
+  {% endfor %}
+
+  <!-- Grand total -->
+  <div class="gt-wrap">
+    <div class="section-head">📊 Grand Total — All Departments</div>
+    <table class="gt-table">
+      <thead>
+        <tr>
+          <th style="width:36px;">#</th>
+          <th>Department</th>
+          <th>L</th><th>T</th><th>P</th>
+          <th>Total (hrs/wk)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dept_name, dt in dept_totals.items %}
+        <tr>
+          <td style="color:var(--muted);font-size:.73rem;">{{ forloop.counter }}</td>
+          <td><strong>{{ dept_name }}</strong></td>
+          <td class="num">{{ dt.l }}</td>
+          <td class="num">{{ dt.t }}</td>
+          <td class="num">{{ dt.p }}</td>
+          <td class="num" style="font-family:'Roboto',sans-serif;font-size:.95rem;color:var(--blue);">{{ dt.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Grand Total</td>
+          <td>{{ grand_total.l }}</td>
+          <td>{{ grand_total.t }}</td>
+          <td>{{ grand_total.p }}</td>
+          <td style="font-size:1rem;">{{ grand_total.total }} hrs/wk</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+{% else %}
+  <div class="empty">
+    <div class="icon">📋</div>
+    <p>No workload data yet. Generate a timetable first using <strong>Smart Generate</strong>.</p>
+    <a href="/generate-smart/" style="display:inline-block;margin-top:16px;padding:10px 22px;
+      background:var(--blue);color:#fff;border-radius:10px;font-weight:700;text-decoration:none;">
+      ⚡ Smart Generate
+    </a>
+  </div>
+{% endif %}
+</div>
+
+<script>
+// ── Per-dept print ───────────────────────────────────────────────────────────
+function printDeptSection(btn){
+  const section = btn.closest('.dept-section');
+  if(!section) return;
+  // Hide all other sections temporarily
+  const others = document.querySelectorAll('.dept-section,.gt-wrap,.summary-cards,.controls-bar');
+  const visibility = [...others].map(el => el.style.display);
+  others.forEach(el => {
+    if(el !== section && !section.contains(el)) el.style.display = 'none';
+  });
+  window.print();
+  // Restore
+  others.forEach((el, i) => el.style.display = visibility[i]);
+}
+
+// ── Workload report search filter ─────────────────────────────────────────────
+// Re-apply search from URL param on page load
+function filterWorkload(q){
+  q = q.toLowerCase().trim();
+  let visible = 0, total = 0;
+
+  // Filter data rows in all dept tables
+  document.querySelectorAll('.wl-table tbody tr.data-row').forEach(row => {
+    total++;
+    const text = row.textContent.toLowerCase();
+    const show = !q || text.includes(q);
+    row.style.display = show ? '' : 'none';
+    if(show) visible++;
+  });
+
+  // Hide/show prof-subtotal rows: show only if at least one of their data rows is visible
+  document.querySelectorAll('.wl-table tbody tr.prof-sub').forEach(subRow => {
+    // Find preceding data rows for this professor (walk backwards)
+    let prev = subRow.previousElementSibling;
+    let anyVisible = false;
+    while(prev && prev.classList.contains('data-row')){
+      if(prev.style.display !== 'none') anyVisible = true;
+      prev = prev.previousElementSibling;
+    }
+    subRow.style.display = anyVisible ? '' : 'none';
+  });
+
+  // Update visible count badge
+  const badge = document.getElementById('wlVisibleCount');
+  if(badge){
+    badge.textContent = q ? `${visible} of ${total} rows shown` : '';
+  }
+}
+// Re-apply search term from URL on load
+document.addEventListener('DOMContentLoaded', () => {
+  const q = document.getElementById('wlSearch');
+  if(q && q.value.trim()) filterWorkload(q.value.trim());
+});
+</script>
+<!-- Back to top -->
+<button onclick="window.scrollTo({top:0,behavior:'smooth'})"
+        style="position:fixed;bottom:28px;right:28px;z-index:999;
+               background:var(--blue);color:#fff;border:none;border-radius:50%;
+               width:46px;height:46px;font-size:1.2rem;cursor:pointer;
+               box-shadow:0 4px 16px rgba(21,101,192,.4);
+               transition:all .2s;display:flex;align-items:center;justify-content:center;"
+        title="Back to top"
+        onmouseenter="this.style.background='var(--blue-d)';this.style.transform='scale(1.1)'"
+        onmouseleave="this.style.background='var(--blue)';this.style.transform='scale(1)'">
+  ↑
+</button>
+</body>
+</html>

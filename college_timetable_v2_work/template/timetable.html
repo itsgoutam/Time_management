@@ -1,0 +1,239 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timetable — {{ section }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f4ff;--card:#fff;--border:#dce3f5;
+  --blue:#1565c0;--blue-mid:#1e88e5;--blue-light:#e3f0ff;--blue-dark:#0d47a1;
+  --red:#e02424;--green:#16a34a;--text:#1a1f36;--muted:#607d8b;
+  --theory-bg:#e3f0ff;--theory-border:#90caf9;--theory-text:#1565c0;
+  --lab-bg:#f0fdf4;--lab-border:#bbf7d0;--lab-text:#15803d;
+  --tut-bg:#fdf4ff;--tut-border:#e9d5ff;--tut-text:#7c3aed;
+  --lunch-bg:#fff7ed;--lunch-border:#fed7aa;--lunch-text:#c2410c;
+  --cell-w:130px; --cell-h:100px;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:68px;
+  background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);position:sticky;top:0;z-index:100;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;}
+.nav-links a{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.85);text-decoration:none;
+  padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+.btn-green{background:var(--green)!important;color:#fff!important;border-color:var(--green)!important;font-weight:700!important;}
+.btn-pdf{background:#7c3aed!important;color:#fff!important;border-color:#7c3aed!important;font-weight:700!important;}
+main{padding:28px 32px;max-width:1600px;margin:0 auto;}
+
+/* PAGE HEADER */
+.page-header{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-mid) 100%);
+  border-radius:8px;padding:22px 28px;margin-bottom:20px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  box-shadow:0 4px 20px rgba(21,101,192,.2);}
+.header-left h1{font-family:'Roboto',sans-serif;font-size:1.35rem;font-weight:700;color:#fff;}
+.header-left p{color:rgba(255,255,255,.7);font-size:.82rem;margin-top:3px;}
+.header-right{display:flex;gap:10px;align-items:center;}
+.hbtn{font-size:.8rem;font-weight:700;padding:9px 18px;border-radius:10px;
+  text-decoration:none;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;}
+.hbtn-pdf{background:#7c3aed;color:#fff;}
+.hbtn-pdf:hover{background:#6d28d9;}
+.hbtn-gen{background:var(--red);color:#fff;}
+.hbtn-gen:hover{background:#c81e1e;}
+
+/* LEGEND */
+.legend{display:flex;gap:16px;align-items:center;margin-bottom:16px;flex-wrap:wrap;
+  padding:8px 14px;background:var(--card);border-radius:10px;border:1.5px solid var(--border);}
+.leg{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted);font-weight:500;}
+.leg-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+.ld-th{background:var(--blue);} .ld-lab{background:var(--green);} .ld-lunch{background:#ea580c;}
+
+/* TIMETABLE WRAP */
+.tt-wrap{overflow-x:auto;border-radius:8px;box-shadow:0 2px 16px rgba(21,101,192,.1);}
+table{border-collapse:separate;border-spacing:0;
+  background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;
+  table-layout:fixed;width:100%;}
+
+/* COLUMN WIDTHS — all equal */
+col.day-col{width:100px;}
+col.slot-col{width:var(--cell-w);}
+col.lunch-col{width:90px;}
+
+thead th{
+  padding:11px 6px;font-size:.66rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);text-align:center;
+  background:#f0f4ff;border-bottom:2px solid var(--border);
+  width:var(--cell-w);height:44px;}
+thead th:first-child{background:var(--blue);color:#fff;width:100px;
+  font-family:'Roboto',sans-serif;font-size:.8rem;letter-spacing:.04em;}
+thead th.lunch-head{background:var(--lunch-bg);color:var(--lunch-text);width:90px;}
+
+tbody tr{transition:background .15s;}
+tbody tr:hover{background:#f5f8ff;}
+tbody td{
+  padding:4px;vertical-align:middle;border-bottom:1px solid #eef2ff;
+  width:var(--cell-w);height:var(--cell-h);}
+tbody td:first-child{
+  padding:0;width:100px;font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;
+  color:var(--blue);text-align:center;vertical-align:middle;
+  background:#f0f4ff;border-right:2px solid var(--border);white-space:nowrap;height:var(--cell-h);}
+tbody tr:last-child td{border-bottom:none;}
+
+/* CELLS — all same height */
+.cell{
+  border-radius:9px;padding:7px 5px;
+  width:100%;height:calc(var(--cell-h) - 8px);
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;gap:3px;
+  transition:transform .15s,box-shadow .15s;}
+.cell:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1);}
+.cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
+.cell-lab   {background:var(--lab-bg);  border:1.5px solid var(--lab-border);}
+.cell-tut   {background:var(--tut-bg);  border:1.5px solid var(--tut-border);}
+.cell-empty {background:#f8faff;         border:1.5px solid #eef2ff;}
+.cell-lunch {background:var(--lunch-bg); border:1.5px solid var(--lunch-border);
+  align-items:center;justify-content:center;}
+
+.cell-name{font-size:.77rem;font-weight:700;line-height:1.25;}
+.cell-code{font-size:.62rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:1px 6px;border-radius:5px;margin-bottom:2px;display:inline-block;}
+.cell-theory .cell-code{background:#dbeafe;color:#1e40af;}
+.cell-lab    .cell-code{background:#dcfce7;color:#15803d;}
+.cell-tut    .cell-code{background:#ede9fe;color:#6d28d9;}
+.cell-theory .cell-name{color:var(--theory-text);}
+.cell-lab    .cell-name{color:var(--lab-text);}
+.cell-tut    .cell-name{color:var(--tut-text);}
+.cell-prof{font-size:.65rem;color:var(--muted);margin-top:1px;}
+.cell-room{font-size:.63rem;font-weight:600;color:#374151;margin-top:2px;
+  background:#fff;border:1px solid var(--border);border-radius:5px;
+  padding:1px 6px;display:inline-flex;align-items:center;gap:3px;}
+.cell-badge{font-size:.57rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  margin-top:3px;padding:2px 7px;border-radius:10px;display:inline-block;}
+.cell-theory .cell-badge{background:#dbeafe;color:var(--theory-text);}
+.cell-lab    .cell-badge{background:#dcfce7;color:var(--lab-text);}
+.cell-tut    .cell-badge{background:#ede9fe;color:var(--tut-text);}
+.lunch-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--lunch-text);}
+.lunch-time{font-size:.61rem;color:#9a3412;margin-top:2px;}
+.empty-dash{color:#cbd5f0;font-size:1.2rem;}
+
+/* QR PANEL */
+.qr-panel{background:var(--card);border:2px solid var(--border);border-radius:8px;
+  padding:20px 24px;margin-top:22px;display:flex;align-items:center;gap:24px;
+  box-shadow:0 2px 12px rgba(21,101,192,.07);}
+.qr-img-wrap{flex-shrink:0;background:#fff;border:3px solid var(--blue-light);
+  border-radius:6px;padding:8px;display:flex;align-items:center;justify-content:center;}
+.qr-img-wrap img{width:130px;height:130px;display:block;}
+.qr-info h3{font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;color:var(--text);}
+.qr-info p{font-size:.82rem;color:var(--muted);margin-top:4px;line-height:1.5;}
+.qr-url{font-size:.75rem;font-weight:600;color:var(--blue);word-break:break-all;
+  background:var(--blue-light);border-radius:7px;padding:6px 10px;margin-top:8px;
+  display:inline-block;}
+.qr-badge{display:inline-flex;align-items:center;gap:5px;margin-top:10px;
+  font-size:.72rem;font-weight:700;color:#15803d;background:#f0fdf4;
+  border:1.5px solid #bbf7d0;border-radius:8px;padding:4px 10px;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="Logo">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/timetable/{{ section.id }}/pdf/" class="btn-pdf">⬇ PDF</a>
+    <a href="/timetable/{{ section.id }}/csv/" class="btn-pdf" style="background:#16a34a!important;border-color:#16a34a!important;">⬇ CSV</a>
+    
+    <a href="/workload-report/" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
+    <a href="/generate-smart/" class="btn-gen">⚡ Regenerate</a>
+  </div>
+</nav>
+<main>
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-left">
+      <h1>{{ section.course.department.name }} · {{ section.course.get_display_name }} · {{ section.year }} · Sec {{ section.section_name }} — {{ section.get_group_display }}</h1>
+      <p>Weekly Timetable &nbsp;·&nbsp; Auto-generated by </p>
+    </div>
+    <div class="header-right">
+      <a href="/timetable/{{ section.id }}/csv/" class="hbtn" style="background:#16a34a;color:#fff;">⬇ CSV</a>
+      <a href="/timetable/{{ section.id }}/pdf/" class="hbtn hbtn-pdf">⬇ Download PDF</a>
+      <a href="/generate-smart/" class="hbtn hbtn-gen">⚡ Regenerate</a>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="leg"><div class="leg-dot ld-th"></div>Theory (50 min)</div>
+    <div class="leg"><div class="leg-dot ld-lab"></div>Lab (100 min, 2 slots)</div>
+    <div class="leg"><div class="leg-dot" style="background:#7c3aed;"></div>Tutorial (50 min, per group)</div>
+  </div>
+
+  <!-- Timetable -->
+  <div class="tt-wrap">
+    <table>
+      <colgroup>
+        <col class="day-col">
+        <col class="slot-col"><col class="slot-col"><col class="slot-col">
+        <col class="slot-col"><col class="slot-col">
+        <col class="lunch-col">
+        <col class="slot-col"><col class="slot-col">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>9:00<br>9:50</th><th>9:50<br>10:40</th><th>10:40<br>11:30</th>
+          <th>11:30<br>12:20</th><th>12:20<br>1:10</th><th>1:10<br>2:00</th>
+          <th>2:00<br>2:50</th><th>2:50<br>3:40</th><th>3:40<br>4:30</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day, cells in table.items %}
+        <tr>
+          <td>{{ day }}</td>
+          {% for cell in cells %}
+            {% if not cell.skip %}
+              <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
+                {% if cell.slot in lunch_slots %}
+                  <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
+                {% elif cell.entry %}
+                  <div class="cell {% if cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                    {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}
+                    <div class="cell-name">{{ cell.entry.subject.name }}</div>
+                    <div class="cell-prof">👤 {{ cell.entry.professor.name }}</div>
+                    {% if cell.entry.room %}<div class="cell-room">🚪 {{ cell.entry.room.name }}</div>{% endif %}
+                    <span class="cell-badge">{% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab · 100m{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tutorial · 50m{% else %}📘 Theory · 50m{% endif %}</span>
+                  </div>
+                {% else %}<div class="cell cell-empty"><span class="empty-dash">—</span></div>{% endif %}
+              </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- QR Code Panel -->
+  <div class="qr-panel">
+    <div class="qr-img-wrap">
+      <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR Code for this timetable">
+    </div>
+    <div class="qr-info">
+      <h3>📱 Scan to View This Timetable</h3>
+      <p>Anyone can scan this QR code to instantly open the timetable for<br>
+        <strong>{{ section.course.department.name }} · {{ section.course.get_display_name }} · {{ section.year }} · Sec {{ section.section_name }} {{ section.get_group_display }}</strong>
+      </p>
+      <div class="qr-url">{{ qr_url }}</div>
+      <div class="qr-badge">✅ Always up-to-date — reflects latest generated timetable</div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

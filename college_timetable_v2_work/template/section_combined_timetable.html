@@ -1,0 +1,325 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Section {{ section_name }} — {{ year_display }} Combined Timetable</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--card:#fff;--border:#e0e3ea;
+  --blue:#1565c0;--blue-light:#e3f0ff;--blue-mid:#1e88e5;
+  --red:#d32f2f;--green:#16a34a;--purple:#7c3aed;
+  --text:#1c2333;--muted:#607d8b;
+  --g1:#1565c0;--g1-light:#dbeafe;--g1-label:#1d4ed8;
+  --g2:#7c3aed;--g2-light:#ede9fe;--g2-label:#6d28d9;
+  --g3:#065f46;--g3-light:#d1fae5;--g3-label:#047857;
+  --g4:#92400e;--g4-light:#fef3c7;--g4-label:#b45309;
+  --theory-bg:#eff6ff;--theory-border:#bfdbfe;--theory-text:#1d4ed8;
+  --lab-bg:#f0fdf4;--lab-border:#bbf7d0;--lab-text:#15803d;
+  --tut-bg:#fdf4ff;--tut-border:#e9d5ff;--tut-text:#7c3aed;
+  --lunch-bg:#fff7ed;--lunch-border:#fed7aa;--lunch-text:#c2410c;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:68px;
+  background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-right{display:flex;gap:10px;}
+.nav-btn{font-size:.82rem;color:rgba(255,255,255,.85);text-decoration:none;padding:7px 14px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-btn:hover{background:rgba(255,255,255,.15);color:#fff;}
+.btn-pdf{background:var(--purple)!important;color:#fff!important;border-color:var(--purple)!important;font-weight:700!important;}
+main{padding:36px 40px;max-width:1600px;margin:0 auto;}
+.page-header{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-mid) 100%);
+  border-radius:8px;padding:28px 36px;margin-bottom:22px;
+  box-shadow:0 4px 20px rgba(21,101,192,.2);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+.page-header-left h1{font-family:'Roboto',sans-serif;font-size:1.45rem;font-weight:700;color:#fff;}
+.page-header-left p{color:rgba(255,255,255,.75);font-size:.88rem;margin-top:5px;}
+.page-header-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.header-pdf-btn{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:9px;
+  font-size:.8rem;font-weight:700;color:#fff;text-decoration:none;transition:all .2s;}
+.header-pdf-btn:hover{opacity:.85;}
+.legend-bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:11px 20px;background:var(--card);border:2px solid var(--border);
+  border-radius:6px;margin-bottom:20px;}
+.leg{display:flex;align-items:center;gap:7px;font-size:.75rem;color:var(--muted);}
+.leg-dot{width:11px;height:11px;border-radius:3px;}
+.ld-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
+.ld-lab{background:var(--lab-bg);border:1.5px solid var(--lab-border);}
+.ld-tut{background:var(--tut-bg);border:1.5px solid var(--tut-border);}
+.ld-lunch{background:var(--lunch-bg);border:1.5px solid var(--lunch-border);}
+.group-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:.74rem;font-weight:700;}
+.pill-g1{background:var(--g1-light);color:var(--g1-label);border:1.5px solid #bfdbfe;}
+.pill-g2{background:var(--g2-light);color:var(--g2-label);border:1.5px solid #ddd6fe;}
+.pill-g3{background:var(--g3-light);color:var(--g3-label);border:1.5px solid #6ee7b7;}
+.pill-g4{background:var(--g4-light);color:var(--g4-label);border:1.5px solid #fcd34d;}
+.table-card{background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.07);}
+.table-card-header{padding:16px 24px;background:#f8faff;border-bottom:2px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;}
+.table-card-title{font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;color:var(--blue);}
+.table-card-sub{font-size:.78rem;color:var(--muted);margin-top:3px;}
+.pdf-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;
+  font-size:.8rem;font-weight:700;color:#fff;background:var(--purple);text-decoration:none;transition:all .2s;}
+.pdf-btn:hover{background:#6d28d9;}
+.tt-wrap{overflow-x:auto;padding:14px;}
+table.combined{width:100%;border-collapse:collapse;min-width:1200px;background:var(--card);}
+table.combined thead th{
+  padding:11px 6px;font-size:.67rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);text-align:center;background:#f8faff;
+  border-bottom:2px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;}
+table.combined thead th:first-child{background:var(--blue);color:#fff;font-family:'Roboto',sans-serif;width:70px;}
+table.combined thead th.grp-col{width:50px;background:#f0f4ff;border-right:2px solid var(--border);}
+table.combined thead th.lunch-head{background:var(--lunch-bg);color:var(--lunch-text);width:82px;}
+table.combined thead th:last-child{border-right:none;}
+table.combined tbody td{padding:4px;border-right:1px solid #eef2ff;vertical-align:middle;width:115px;}
+table.combined tbody td:last-child{border-right:none;}
+td.day-cell{padding:0;width:70px;font-family:'Roboto',sans-serif;font-size:.8rem;font-weight:700;
+  color:var(--blue);text-align:center;vertical-align:middle;
+  background:#f0f4ff;border-right:2px solid var(--border)!important;}
+td.grp-cell{padding:5px 6px;width:50px;text-align:center;vertical-align:middle;
+  border-right:2px solid var(--border)!important;}
+.grp-tag{display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:9px;font-family:'Roboto',sans-serif;
+  font-size:.72rem;font-weight:700;}
+.grp-tag-g1{background:var(--g1-light);color:var(--g1-label);border:1.5px solid #bfdbfe;}
+.grp-tag-g2{background:var(--g2-light);color:var(--g2-label);border:1.5px solid #ddd6fe;}
+.grp-tag-g3{background:var(--g3-light);color:var(--g3-label);border:1.5px solid #6ee7b7;}
+.grp-tag-g4{background:var(--g4-light);color:var(--g4-label);border:1.5px solid #fcd34d;}
+tr.row-g1 td{background-color:rgba(219,234,254,.05);border-bottom:1px dashed #c7d7f7;}
+tr.row-g2 td{background-color:rgba(237,233,254,.05);border-bottom:1px dashed #ddd6fe;}
+tr.row-g3 td{background-color:rgba(209,250,229,.05);border-bottom:1px dashed #6ee7b7;}
+tr.row-g4 td{background-color:rgba(254,243,199,.05);border-bottom:2px solid var(--border);}
+tr.row-g4:last-child td,tr.row-g2:last-child td{border-bottom:none;}
+tr.row-g1:hover td,tr.row-g2:hover td,tr.row-g3:hover td,tr.row-g4:hover td{background-color:#f0f4ff!important;}
+td.lunch-col{background:var(--lunch-bg)!important;border-right:1px solid var(--lunch-border)!important;}
+.lunch-inner{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90px;gap:4px;}
+.lunch-label{font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--lunch-text);}
+.lunch-time{font-size:.6rem;color:#9a3412;}
+.cell{border-radius:8px;padding:7px 5px;width:100%;min-height:90px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;gap:2px;}
+.cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
+.cell-lab   {background:var(--lab-bg);  border:1.5px solid var(--lab-border);}
+.cell-tut   {background:var(--tut-bg);  border:1.5px solid var(--tut-border);}
+.cell-empty {background:#fafbff;        border:1.5px solid #eef2ff;}
+.cell-name{font-size:.76rem;font-weight:700;line-height:1.3;}
+.cell-code{font-size:.63rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 5px;border-radius:5px;margin-bottom:2px;display:inline-block;}
+.cell-theory .cell-code{background:#dbeafe;color:#1e40af;}
+.cell-lab    .cell-code{background:#dcfce7;color:#15803d;}
+.cell-tut    .cell-code{background:#ede9fe;color:#6d28d9;}
+.subj-legend{margin-top:22px;background:var(--card);border:2px solid var(--border);border-radius:7px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.subj-legend-header{padding:13px 22px;background:#f8faff;border-bottom:2px solid var(--border);}
+.subj-legend-header h3{font-family:'Roboto',sans-serif;font-size:.92rem;font-weight:700;color:var(--blue);}
+table.legend-tbl{width:100%;border-collapse:collapse;}
+table.legend-tbl thead th{padding:9px 16px;font-size:.7rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--muted);background:#f8faff;border-bottom:1.5px solid var(--border);text-align:left;}
+table.legend-tbl tbody tr:nth-child(even){background:#f7f9ff;}
+table.legend-tbl tbody td{padding:9px 16px;font-size:.8rem;border-bottom:1px solid #eef2ff;vertical-align:middle;}
+table.legend-tbl tbody tr:last-child td{border-bottom:none;}
+.code-chip{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.05em;}
+.chip-theory{background:#dbeafe;color:#1e40af;}
+.chip-lab{background:#dcfce7;color:#15803d;}
+.chip-tut{background:#ede9fe;color:#6d28d9;}
+.type-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:700;}
+.cell-theory .cell-name{color:var(--theory-text);}
+.cell-lab    .cell-name{color:var(--lab-text);}
+.cell-tut    .cell-name{color:var(--tut-text);}
+.cell-prof{font-size:.64rem;color:var(--muted);margin-top:1px;}
+.cell-room{font-size:.61rem;color:var(--blue);margin-top:2px;}
+.cell-badge{font-size:.56rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  margin-top:3px;padding:2px 6px;border-radius:8px;display:inline-block;}
+.cell-theory .cell-badge{background:#dbeafe;color:var(--theory-text);}
+.cell-lab    .cell-badge{background:#dcfce7;color:var(--lab-text);}
+.cell-tut    .cell-badge{background:#ede9fe;color:var(--tut-text);}
+.empty-dash{color:#cbd5f0;font-size:1.1rem;}
+.no-data{text-align:center;padding:60px;color:var(--muted);}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-right">
+    <a href="/section-timetable/{{ course.id }}/{{ year }}/{{ section_name }}/pdf/" class="nav-btn btn-pdf">📄 Export Section PDF</a>
+    <a href="/" class="nav-btn">← Dashboard</a>
+  
+    
+    <a href="/workload-report/" class="nav-btn" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
+  </div>
+</nav>
+
+<main>
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>📂 Section {{ section_name }} — {{ year_display }} Combined Timetable</h1>
+      <p>{{ course.department.name }} &nbsp;·&nbsp; {{ course.get_display_name }} &nbsp;·&nbsp; All groups in Section {{ section_name }}</p>
+    </div>
+    <div class="page-header-actions">
+      {% for gt in group_tables %}
+      <a href="/timetable/{{ gt.section.id }}/pdf/"
+         class="header-pdf-btn"
+         style="{% if gt.section.group == 'G1' %}background:var(--blue);{% elif gt.section.group == 'G2' %}background:var(--purple);{% elif gt.section.group == 'G3' %}background:var(--g3);{% else %}background:var(--g4);{% endif %}">
+        📄 {{ gt.section.get_group_display }} PDF
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="legend-bar">
+    <div class="leg"><span class="leg-dot ld-theory"></span>Theory (50 min)</div>
+    <div class="leg"><span class="leg-dot ld-lab"></span>Lab (100 min)</div>
+    <div class="leg"><span class="leg-dot ld-tut"></span>Tutorial (50 min)</div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+      {% for gt in group_tables %}
+      <span class="group-pill {% if gt.section.group == 'G1' %}pill-g1{% elif gt.section.group == 'G2' %}pill-g2{% elif gt.section.group == 'G3' %}pill-g3{% else %}pill-g4{% endif %}">
+        {{ gt.section.get_group_display }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if group_tables %}
+  <div class="table-card">
+    <div class="table-card-header">
+      <div>
+        <div class="table-card-title">Section {{ section_name }} — {% for gt in group_tables %}{{ gt.section.get_group_display }}{% if not forloop.last %} &amp; {% endif %}{% endfor %} Combined View</div>
+        <div class="table-card-sub">{{ course.department.name }} &nbsp;·&nbsp; {{ course.get_display_name }} &nbsp;·&nbsp; {{ year_display }}</div>
+      </div>
+      <a href="/section-timetable/{{ course.id }}/{{ year }}/{{ section_name }}/pdf/" class="pdf-btn">📄 Export Combined PDF</a>
+    </div>
+    <div class="tt-wrap">
+      <table class="combined">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th class="grp-col">Grp</th>
+            <th>9:00<br>9:50</th>
+            <th>9:50<br>10:40</th>
+            <th>10:40<br>11:30</th>
+            <th>11:30<br>12:20</th>
+            <th>12:20<br>1:10</th>
+            <th>1:10<br>2:00</th>
+            <th>2:00<br>2:50</th>
+            <th>2:50<br>3:40</th>
+            <th>3:40<br>4:30</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for day in days %}
+            {% for gt in group_tables %}
+            <tr class="row-{{ gt.section.group|lower }}">
+
+              {% comment %}Day cell spans all group rows — only render on first group{% endcomment %}
+              {% if forloop.first %}
+              <td class="day-cell" rowspan="{{ group_tables|length }}">{{ day }}</td>
+              {% endif %}
+
+              <td class="grp-cell">
+                <span class="grp-tag {% if gt.section.group == 'G1' %}grp-tag-g1{% elif gt.section.group == 'G2' %}grp-tag-g2{% elif gt.section.group == 'G3' %}grp-tag-g3{% else %}grp-tag-g4{% endif %}">&nbsp;{{ gt.section.group }}&nbsp;</span>
+                  {{ gt.section.group }}
+                </span>
+              </td>
+
+              {% for cell in gt.table|dict_key:day %}
+                {% if not cell.skip %}
+                  <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
+                    {% if cell.slot in lunch_slots %}
+                      <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
+                    {% elif cell.entry %}
+                      <div class="cell {% if cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                        {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}
+                        <div class="cell-name">{{ cell.entry.subject.name }}</div>
+                        <div class="cell-prof">👤 {{ cell.entry.professor.name }}</div>
+                        {% if cell.entry.room %}<div class="cell-room">🚪 {{ cell.entry.room.name }}</div>{% endif %}
+                        <span class="cell-badge">
+                          {% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab · 100m
+                          {% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tut · 50m
+                          {% else %}📘 Theory · 50m{% endif %}
+                        </span>
+                      </div>
+                    {% else %}
+                      <div class="cell cell-empty"><span class="empty-dash">—</span></div>
+                    {% endif %}
+                  </td>
+                {% endif %}
+              {% endfor %}
+
+            </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="no-data">
+    No timetable generated yet. <a href="/generate-smart/" style="color:var(--blue);font-weight:700;">⚡ Generate →</a>
+  </div>
+  {% endif %}
+
+  {% if group_tables %}
+  {% comment %}Build combined unique subjects from all groups{% endcomment %}
+  {% with subjects_seen="" %}
+  <div class="subj-legend">
+    <div class="subj-legend-header">
+      <h3>📋 Subject Reference Table — Section {{ section_name }}</h3>
+    </div>
+    <table class="legend-tbl">
+      <thead>
+        <tr>
+          <th>Sub Code</th>
+          <th>Subject Name</th>
+          <th>Professor</th>
+          <th>Type</th>
+          <th>Room / Lab</th>
+          <th>Group</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for gt in group_tables %}
+          {% for day in days %}
+            {% for cell in gt.table|dict_key:day %}
+              {% if cell.entry and not cell.skip %}
+                <tr>
+                  <td>
+                    <span class="code-chip {% if cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
+                      {% if cell.entry.subject.code %}{{ cell.entry.subject.code }}{% else %}—{% endif %}
+                    </span>
+                  </td>
+                  <td><strong>{{ cell.entry.subject.name }}</strong></td>
+                  <td>{{ cell.entry.professor.name }}</td>
+                  <td>
+                    <span class="type-badge {% if cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
+                      {% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab
+                      {% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tutorial
+                      {% else %}📘 Theory{% endif %}
+                    </span>
+                  </td>
+                  <td>{% if cell.entry.room %}{{ cell.entry.room.name }}{% else %}—{% endif %}</td>
+                  <td>
+                    <span class="group-pill {% if gt.section.group == 'G1' %}pill-g1{% elif gt.section.group == 'G2' %}pill-g2{% elif gt.section.group == 'G3' %}pill-g3{% else %}pill-g4{% endif %}">
+                      {{ gt.section.group }}
+                    </span>
+                  </td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endwith %}
+  {% endif %}
+
+</main>
+</body>
+</html>

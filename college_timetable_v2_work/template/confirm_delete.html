@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confirm Delete</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--red:#e02424;--text:#1c2333;--muted:#607d8b;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 24px;}
+.card{background:var(--card);border:2px solid #fecaca;border-radius:20px;padding:48px 44px;width:100%;max-width:480px;text-align:center;box-shadow:0 4px 24px rgba(224,36,36,.1);animation:pop .4s ease both;}
+@keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.icon{font-size:3.5rem;margin-bottom:16px;}
+h1{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--red);margin-bottom:10px;}
+p{color:var(--muted);font-size:.92rem;line-height:1.6;margin-bottom:28px;}
+p strong{color:var(--text);}
+.buttons{display:flex;gap:12px;justify-content:center;}
+.btn-cancel{padding:12px 28px;border-radius:11px;font-size:.9rem;font-weight:600;background:#f0f4ff;color:var(--blue);text-decoration:none;border:2px solid var(--border);transition:all .2s;}
+.btn-cancel:hover{background:#e8effe;}
+.btn-delete{padding:12px 28px;border-radius:11px;font-size:.9rem;font-weight:700;background:var(--red);color:#fff;border:none;cursor:pointer;transition:all .2s;}
+.btn-delete:hover{background:#c81e1e;box-shadow:0 4px 14px rgba(224,36,36,.35);}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text">EduScheduler</span>
+  </div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</nav>
+<main>
+  <div class="card">
+    <div class="icon">🗑️</div>
+    <h1>Delete {{ type }}?</h1>
+    <p>You are about to permanently delete <strong>{{ object }}</strong>.<br>This action cannot be undone and may affect related data.</p>
+    <div class="buttons">
+      <a href="/" class="btn-cancel">✖ Cancel</a>
+      <form method="post" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn-delete">🗑️ Yes, Delete</button>
+      </form>
+    </div>
+  </div>
+</main>
+</body>
+</html>

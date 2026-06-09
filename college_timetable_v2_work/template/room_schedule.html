@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ room.name }} — Schedule</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;
+  --text:#1c2333;--muted:#607d8b;--red:#e02424;
+  --theory-bg:#eff6ff;--theory-border:#bfdbfe;--theory-text:#1d4ed8;
+  --lab-bg:#f0fdf4;--lab-border:#bbf7d0;--lab-text:#15803d;
+  --tut-bg:#fdf4ff;--tut-border:#e9d5ff;--tut-text:#7c3aed;
+  --lunch-bg:#fff7ed;--lunch-text:#c2410c;
+  --occ-bg:#fee2e2;--occ-border:#fecaca;--occ-text:#dc2626;
+  --amber:#d97706;--amber-light:#fffbeb;}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);position:sticky;top:0;z-index:100;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;}
+.nav-links a{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{padding:36px 32px;max-width:1500px;margin:0 auto;}
+.header{margin-bottom:24px;}
+.header h1{font-family:'Roboto',sans-serif;font-size:1.7rem;font-weight:700;}
+.header h1 span{color:var(--blue);}
+.breadcrumb{font-size:.8rem;color:var(--muted);margin-top:6px;}
+.breadcrumb a{color:var(--blue);text-decoration:none;font-weight:600;}
+.meta-row{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:600;border:2px solid;}
+.chip-cls{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+.chip-lab{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}
+.chip-cap{background:#fff7ed;color:#c2410c;border-color:#fed7aa;}
+.info-box{background:#f0fdf4;border:2px solid #bbf7d0;border-radius:6px;padding:12px 18px;margin-bottom:20px;font-size:.85rem;color:#15803d;font-weight:500;}
+.tt-wrap{overflow-x:auto;border-radius:8px;box-shadow:0 2px 16px rgba(26,86,219,.08);}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:1100px;background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;}
+thead th{padding:13px 8px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:center;background:#f8faff;border-bottom:2px solid var(--border);}
+thead th:first-child{background:var(--blue);color:#fff;width:110px;}
+thead th.lunch-head{background:var(--lunch-bg);color:var(--lunch-text);}
+tbody td{padding:4px;vertical-align:middle;border-bottom:1px solid #eef2ff;height:100px;width:130px;}
+tbody td:first-child{font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;color:var(--blue);text-align:center;vertical-align:middle;background:#f0f4ff;border-right:2px solid var(--border);width:110px;padding:0;}
+tbody tr:last-child td{border-bottom:none;}
+.cell{border-radius:9px;padding:8px 6px;width:100%;height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;}
+.cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
+.cell-lab{background:var(--lab-bg);border:1.5px solid var(--lab-border);}
+.cell-tut{background:var(--tut-bg);border:1.5px solid var(--tut-border);}
+.cell-empty{background:#fafbff;border:1.5px solid #eef2ff;}
+.cell-lunch{background:var(--lunch-bg);border:1.5px solid #fed7aa;align-items:center;justify-content:center;}
+.cell-name{font-size:.78rem;font-weight:700;line-height:1.3;}
+.cell-theory .cell-name{color:var(--theory-text);}
+.cell-lab .cell-name{color:var(--lab-text);}
+.cell-tut .cell-name{color:var(--tut-text);}
+.cell-sec{font-size:.67rem;color:var(--muted);margin-top:1px;}
+.cell-prof{font-size:.65rem;color:var(--muted);}
+.cell-badge{font-size:.58rem;font-weight:700;padding:2px 7px;border-radius:10px;display:inline-block;margin-top:2px;}
+.cell-theory .cell-badge{background:#dbeafe;color:var(--theory-text);}
+.cell-lab .cell-badge{background:#dcfce7;color:var(--lab-text);}
+.cell-tut .cell-badge{background:#ede9fe;color:var(--tut-text);}
+.empty-dash{color:#cbd5f0;font-size:1.2rem;}
+.lunch-label{font-size:.72rem;font-weight:700;text-transform:uppercase;color:var(--lunch-text);}
+.lunch-time{font-size:.63rem;color:#9a3412;margin-top:3px;}
+
+.occ-action-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+.occ-action-bar h2{font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;}
+.block-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:9px;
+  background:var(--red);color:#fff;font-size:.82rem;font-weight:700;text-decoration:none;border:none;cursor:pointer;transition:all .2s;}
+.block-btn:hover{background:#b91c1c;}
+.occ-panel{background:#fff;border:2px solid var(--occ-border);border-radius:7px;margin-bottom:18px;overflow:hidden;}
+.occ-panel-header{background:#fef2f2;padding:12px 20px;border-bottom:1.5px solid var(--occ-border);
+  display:flex;align-items:center;justify-content:space-between;}
+.occ-panel-header h3{font-family:'Roboto',sans-serif;font-size:.9rem;font-weight:700;color:#991b1b;}
+.occ-list{padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;}
+.occ-item{background:var(--occ-bg);border:1.5px solid var(--occ-border);border-radius:10px;
+  padding:10px 14px;min-width:200px;}
+.occ-day{font-family:'Roboto',sans-serif;font-size:.78rem;font-weight:700;color:var(--occ-text);}
+.occ-time{font-size:.74rem;color:#7f1d1d;font-weight:600;margin-top:2px;}
+.occ-type{font-size:.68rem;background:#fff;border:1px solid var(--occ-border);border-radius:5px;
+  padding:2px 7px;display:inline-block;color:var(--occ-text);font-weight:700;margin-top:4px;}
+.occ-desc{font-size:.7rem;color:var(--muted);margin-top:3px;}
+.occ-acts{display:flex;gap:6px;margin-top:6px;}
+.occ-act{font-size:.66rem;padding:2px 8px;border-radius:5px;text-decoration:none;font-weight:700;border:none;cursor:pointer;}
+.occ-edit{background:#fef3c7;color:#92400e;} .occ-del{background:#fee2e2;color:var(--red);}
+.occ-empty{padding:14px 20px;color:var(--muted);font-size:.82rem;}
+.cell-occ{background:var(--occ-bg);border:1.5px solid var(--occ-border);}
+.cell-occ .cell-name{color:var(--occ-text);font-size:.72rem;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="Logo">
+    <span class="brand-text">EduScheduler</span>
+  </div>
+  <div class="nav-links">
+    <a href="/">← Dashboard</a>
+    <a href="/room/{{ room.id }}/csv/" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700;">⬇ CSV</a>
+    <a href="/room/{{ room.id }}/pdf/" style="background:#7c3aed;color:#fff;border-color:#7c3aed;font-weight:700;">⬇ PDF</a>
+    <a href="/generate-smart/" style="background:#e02424;color:#fff;border-color:#e02424;font-weight:600;">⚡ Regenerate</a>
+  </div>
+</nav>
+<main>
+  <div class="header">
+    <h1>{% if room.room_type == 'LAB' %}🧪{% else %}🏫{% endif %} <span>{{ room.name }}</span> — Weekly Schedule</h1>
+    <div class="breadcrumb"><a href="/">Dashboard</a> → {{ room.name }}</div>
+    <div class="meta-row">
+      <span class="chip {% if room.room_type == 'LAB' %}chip-lab{% else %}chip-cls{% endif %}">
+        {% if room.room_type == 'LAB' %}🧪 Lab{% else %}🏫 Classroom{% endif %}
+      </span>
+      <span class="chip chip-cap">👥 Capacity: {{ room.capacity }}</span>
+    </div>
+  </div>
+
+  <div class="info-box">
+    ✅ This room is <strong>auto-assigned</strong> by the scheduler during timetable generation — no manual assignment needed. Rooms are picked based on availability at each time slot.
+  </div>
+
+  <!-- Room Occupied Times Panel -->
+  <div class="occ-action-bar">
+    <h2>🚧 Room / Lab Blocked Slots</h2>
+    <a href="/room/{{ room.id }}/add-occupied/" class="block-btn">+ Block Time Slot</a>
+  </div>
+  <div class="occ-panel">
+    <div class="occ-panel-header">
+      <h3>📅 Workshops, Exams & Maintenance Blocks</h3>
+      <span style="font-size:.75rem;color:#991b1b;">These slots cannot be allocated during timetable generation</span>
+    </div>
+    {% if occupied_times %}
+    <div class="occ-list">
+      {% for occ in occupied_times %}
+      <div class="occ-item">
+        <div class="occ-day">{{ occ.day }}</div>
+        <div class="occ-time">🕐 {{ occ.get_time_range_display }}</div>
+        <div><span class="occ-type">
+          {% if occ.purpose == 'WORKSHOP' %}🔧{% elif occ.purpose == 'MAINTENANCE' %}🛠{% elif occ.purpose == 'EXAM' %}📝{% elif occ.purpose == 'EVENT' %}🎉{% else %}📌{% endif %}
+          {{ occ.get_purpose_display }}
+        </span></div>
+        {% if occ.description %}<div class="occ-desc">{{ occ.description }}</div>{% endif %}
+        <div class="occ-acts">
+          <a href="/room-occupied/{{ occ.id }}/edit/" class="occ-act occ-edit">✏️ Edit</a>
+          <a href="/room-occupied/{{ occ.id }}/delete/" class="occ-act occ-del">🗑 Delete</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="occ-empty">No blocked times. Click "Block Time Slot" to mark workshops, maintenance, exams, etc.</div>
+    {% endif %}
+  </div>
+
+  <div class="tt-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>9:00<br>9:50</th><th>9:50<br>10:40</th><th>10:40<br>11:30</th>
+          <th>11:30<br>12:20</th><th>12:20<br>1:10</th><th>1:10<br>2:00</th>
+          <th>2:00<br>2:50</th><th>2:50<br>3:40</th><th>3:40<br>4:30</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day, cells in table.items %}
+        <tr>
+          <td>{{ day }}</td>
+          {% for cell in cells %}
+            {% if cell.skip %}
+            {% else %}
+              <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
+                {% if cell.ts %}
+                  <div class="cell {% if cell.ts.subject.subject_type == 'LAB' %}cell-lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                    <div class="cell-name">{{ cell.ts.subject.name }}</div>
+                    <div class="cell-sec">{{ cell.ts.section.course.department.name }} · {{ cell.ts.section.year }} · {{ cell.ts.section.group }}</div>
+                    <div class="cell-prof">👤 {{ cell.ts.professor.name }}</div>
+                    <span class="cell-badge">{% if cell.ts.subject.subject_type == 'LAB' %}🧪 Lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}📝 Tutorial{% else %}📘 Theory{% endif %}</span>
+                  </div>
+                {% elif cell.occupied %}<div class="cell cell-occ"><div class="cell-name">🚧 {{ cell.occupied.get_purpose_display }}</div>{% if cell.occupied.description %}<div class="occ-desc" style="font-size:.65rem;color:#7f1d1d;margin-top:3px;">{{ cell.occupied.description }}</div>{% endif %}</div>{% else %}<div class="cell cell-empty"><span class="empty-dash">—</span></div>{% endif %}
+              </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+</body>
+</html>

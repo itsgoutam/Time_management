@@ -1,0 +1,876 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<title>Combine Edit — </title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--border:#e0e3ea;
+  --blue:#1565c0;--blue-d:#0d47a1;--blue-light:#e3f0ff;
+  --red:#d32f2f;--red-light:#ffebee;
+  --green:#16a34a;--green-light:#dcfce7;
+  --amber:#d97706;--amber-light:#fef3c7;
+  --purple:#7c3aed;--purple-light:#f3e8ff;
+  --text:#1c2333;--muted:#607d8b;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+
+/* ─── Nav ─────────────────────────────────────────────────────────────────── */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 32px;
+  height:64px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand img{height:42px;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.1rem;color:#fff;}
+.nav-right{display:flex;gap:8px;align-items:center;}
+.nav-btn{font-size:.8rem;font-weight:600;padding:7px 14px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.3);color:#fff;text-decoration:none;cursor:pointer;
+  background:transparent;transition:all .2s;white-space:nowrap;}
+.nav-btn:hover{background:rgba(255,255,255,.15);}
+.nav-btn-white{background:#fff!important;color:var(--blue)!important;border-color:#fff!important;}
+.nav-btn-white:hover{background:#e8f0fe!important;}
+.nav-btn-green{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;}
+.nav-btn-green:hover{background:#15803d!important;}
+.autosave-badge{font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:20px;
+  background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);transition:all .4s;}
+.autosave-badge.saving{background:rgba(255,220,100,.3);color:#fde68a;}
+.autosave-badge.saved {background:rgba(100,220,100,.25);color:#bbf7d0;}
+.autosave-badge.error {background:rgba(255,100,100,.25);color:#fca5a5;}
+
+/* ─── Page strip ─────────────────────────────────────────────────────────── */
+.page-strip{background:linear-gradient(135deg,#1565c0,#1e88e5);border-radius:8px;
+  padding:24px 32px;margin:24px 32px 0;display:flex;align-items:center;
+  justify-content:space-between;box-shadow:0 4px 20px rgba(21,101,192,.2);}
+.page-strip h1{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:#fff;}
+.page-strip p{color:rgba(255,255,255,.75);font-size:.84rem;margin-top:3px;}
+.strip-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.sbtn{padding:9px 18px;border-radius:10px;font-size:.82rem;font-weight:700;
+  text-decoration:none;cursor:pointer;border:none;transition:all .2s;white-space:nowrap;}
+.sbtn-white{background:#fff;color:var(--blue);}   .sbtn-white:hover{background:#dbeafe;}
+.sbtn-green{background:#16a34a;color:#fff;}        .sbtn-green:hover{background:#15803d;}
+.sbtn-amber{background:#d97706;color:#fff;}        .sbtn-amber:hover{background:#b45309;}
+
+/* ─── Stats bar ──────────────────────────────────────────────────────────── */
+.stats-bar{display:flex;gap:14px;padding:20px 32px 0;flex-wrap:wrap;}
+.sc{background:#fff;border:1.5px solid var(--border);border-radius:6px;
+  padding:14px 20px;flex:1;min-width:120px;box-shadow:0 1px 6px rgba(0,0,0,.04);}
+.sc .val{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--blue);}
+.sc .lbl{font-size:.74rem;color:var(--muted);margin-top:2px;}
+
+/* ─── Controls bar ───────────────────────────────────────────────────────── */
+.controls{display:flex;align-items:center;gap:12px;padding:18px 32px;flex-wrap:wrap;}
+.ctrl-group{display:flex;align-items:center;gap:6px;}
+.ctrl-lbl{font-size:.76rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+select.ctrl-sel{padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.81rem;background:#fff;}
+.ctrl-search{padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:.81rem;width:190px;outline:none;transition:border-color .2s;}
+.ctrl-search:focus{border-color:var(--blue);}
+.spacer{flex:1;}
+
+/* ─── Main table ─────────────────────────────────────────────────────────── */
+.table-wrap{padding:0 32px 16px;overflow-x:auto;}
+.ce-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.82rem;
+  background:#fff;border-radius:7px;overflow:hidden;
+  box-shadow:0 2px 16px rgba(0,0,0,.06);border:1.5px solid var(--border);}
+.ce-table thead th{background:var(--blue);color:#fff;padding:11px 13px;
+  font-family:'Roboto',sans-serif;font-size:.75rem;font-weight:700;
+  text-align:left;white-space:nowrap;position:sticky;top:0;z-index:10;}
+th.wl-col{background:var(--blue-d)!important;text-align:center;}
+.ce-table tbody tr{border-bottom:1px solid var(--border);transition:background .13s;}
+.ce-table tbody tr:hover{background:#f5f8ff;}
+.ce-table tbody tr.dirty{background:#fffbeb;}
+.ce-table td{padding:8px 12px;vertical-align:middle;}
+td.wl-cell{text-align:center;}
+
+/* Workload pill */
+.wl-pill{display:inline-flex;align-items:center;gap:4px;border-radius:20px;
+  padding:5px 14px;font-family:'Roboto',sans-serif;font-size:.78rem;font-weight:700;white-space:nowrap;}
+.wl-zero{background:#f1f5f9;color:var(--muted);}
+.wl-ok  {background:var(--green-light);color:#14532d;}
+.wl-near{background:var(--amber-light);color:#92400e;}
+.wl-over{background:var(--red-light);color:var(--red);}
+
+/* Inline edit */
+.editable-text{display:inline-block;padding:4px 8px;border:1.5px solid transparent;
+  border-radius:6px;cursor:pointer;min-width:60px;max-width:180px;transition:all .15s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.editable-text:hover{border-color:var(--blue);background:var(--blue-light);}
+.editable-text.editing{border-color:var(--blue);background:#fff;
+  outline:none;cursor:text;white-space:normal;overflow:visible;}
+input.inline-input,select.inline-select{
+  padding:4px 8px;border:1.5px solid var(--blue);border-radius:6px;
+  font-size:.8rem;font-family:inherit;background:#fff;outline:none;width:100%;min-width:80px;}
+input.inline-num{width:54px;text-align:center;}
+input.inline-num.out-of-range{border-color:var(--red)!important;background:#fff0f0;}
+.dept-badge{display:inline-block;padding:2px 9px;border-radius:6px;
+  font-size:.72rem;font-weight:700;background:var(--purple-light);color:var(--purple);}
+
+/* ─── Workload summary section ───────────────────────────────────────────── */
+.section-title{font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;
+  color:var(--text);padding:24px 32px 10px;display:flex;align-items:center;gap:8px;}
+.section-title::after{content:'';flex:1;height:2px;background:var(--border);border-radius:2px;}
+.wl-summary-wrap{padding:0 32px 40px;overflow-x:auto;}
+.wl-summary-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.82rem;
+  background:#fff;border-radius:7px;overflow:hidden;
+  box-shadow:0 2px 16px rgba(0,0,0,.06);border:1.5px solid var(--border);}
+.wl-summary-table thead th{background:var(--blue-d);color:#fff;padding:11px 16px;
+  font-family:'Roboto',sans-serif;font-size:.75rem;font-weight:700;text-align:left;white-space:nowrap;}
+.wl-summary-table tbody tr{border-bottom:1px solid var(--border);transition:background .13s;}
+.wl-summary-table tbody tr:hover{background:#f5f8ff;}
+.wl-summary-table td{padding:10px 16px;vertical-align:middle;}
+.wl-summary-table tfoot tr{background:#f0f4ff;}
+.wl-summary-table tfoot td{font-family:'Roboto',sans-serif;font-weight:700;
+  font-size:.8rem;color:var(--blue);padding:10px 16px;border-top:2px solid var(--border);}
+.prog-bar-wrap{width:160px;background:#e5e7eb;border-radius:20px;height:10px;overflow:hidden;}
+.prog-bar{height:100%;border-radius:20px;transition:width .4s;}
+.prog-ok  {background:var(--green);}
+.prog-near{background:var(--amber);}
+.prog-over{background:var(--red);}
+.pct-lbl{font-size:.72rem;font-weight:700;margin-left:8px;}
+
+/* ─── Toast ──────────────────────────────────────────────────────────────── */
+.toast-container{position:fixed;top:76px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast{padding:11px 18px;border-radius:10px;font-size:.82rem;font-weight:600;
+  box-shadow:0 4px 20px rgba(0,0,0,.15);animation:slideIn .3s ease;max-width:360px;}
+.toast-success{background:#dcfce7;color:#14532d;border-left:4px solid var(--green);}
+.toast-error  {background:#fef2f2;color:#991b1b;border-left:4px solid var(--red);}
+.toast-warn   {background:var(--amber-light);color:#92400e;border-left:4px solid var(--amber);}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(120%);opacity:0}}
+
+/* ─── Print ──────────────────────────────────────────────────────────────── */
+@media print{
+  nav,.controls,.strip-actions,.toast-container,
+  .autosave-badge,.ctrl-search,button{display:none!important;}
+  .table-wrap,.wl-summary-wrap{padding:0;overflow:visible;}
+  .ce-table,.wl-summary-table{box-shadow:none;border:1px solid #999;font-size:10pt;}
+  .ce-table thead th,.wl-summary-table thead th{
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  th.wl-col{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .page-strip{-webkit-print-color-adjust:exact;print-color-adjust:exact;
+    margin:0 0 12px;border-radius:0;}
+  body{background:#fff;}
+}
+
+/* ─── Empty ──────────────────────────────────────────────────────────────── */
+.empty-state{text-align:center;padding:80px 20px;color:var(--muted);}
+.empty-state .icon{font-size:3rem;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC" onerror="this.style.display='none'">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-right">
+    <span class="autosave-badge" id="autosaveBadge">● Auto-save on</span>
+    <a href="/" class="nav-btn">← Dashboard</a>
+    <a href="/workload-report/" class="nav-btn" style="background:rgba(124,58,237,.6);border-color:rgba(124,58,237,.4);">📋 Workload Report</a>
+    <button class="nav-btn" onclick="undoAll()"
+            style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3);">↩ Undo All</button>
+    <button class="nav-btn nav-btn-green" onclick="saveAll(false)">💾 Save Now</button>
+    <button class="nav-btn nav-btn-white" onclick="location.href='/combine-edit/export-csv/'">📥 Export CSV</button>
+    <button class="nav-btn nav-btn-white" onclick="window.print()">🖨️ Print / PDF</button>
+  </div>
+</nav>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ── Page strip ───────────────────────────────────────────────────────────── -->
+<div class="page-strip">
+  <div>
+    <h1>🔀 Combine Edit</h1>
+    <p>Edit timetable entries — changes auto-save and sync to timetable, workload &amp; schedule views.</p>
+  </div>
+  <div class="strip-actions">
+    <a href="/combine-edit/export-csv/" class="sbtn sbtn-white">📥 Export CSV</a>
+    <button onclick="saveAll(false)" class="sbtn sbtn-green">💾 Save All</button>
+    <button onclick="window.print()" class="sbtn sbtn-amber">🖨️ Download PDF</button>
+  </div>
+</div>
+
+<!-- ── Stats bar ─────────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="sc">
+    <div class="val" id="statTotal">{{ timeslots|length }}</div>
+    <div class="lbl">Total Slots</div>
+  </div>
+  <div class="sc">
+    <div class="val" id="statDirty" style="color:var(--amber);">0</div>
+    <div class="lbl">Unsaved Changes</div>
+  </div>
+  <div class="sc">
+    <div class="val">{{ professors|length }}</div>
+    <div class="lbl">Professors</div>
+  </div>
+  <div class="sc">
+    <div class="val" id="statTotalWL">—</div>
+    <div class="lbl">Total Workload (hrs/wk)</div>
+  </div>
+  <div class="sc">
+    <div class="val" id="statOverloaded" style="color:var(--red);">0</div>
+    <div class="lbl">Overloaded Profs</div>
+  </div>
+</div>
+
+<!-- ── Controls ──────────────────────────────────────────────────────────────── -->
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">Dept</span>
+    <select class="ctrl-sel" id="filterDept" onchange="applyFilters()">
+      <option value="">All</option>
+      {% for ts in timeslots %}{% if ts.section %}
+        <option value="{{ ts.section.course.department.name }}">{{ ts.section.course.department.name }}</option>
+      {% endif %}{% endfor %}
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">Professor</span>
+    <select class="ctrl-sel" id="filterProf" onchange="applyFilters()">
+      <option value="">All</option>
+      {% for p in professors %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-lbl">Search</span>
+    <input type="text" class="ctrl-search" id="searchInput" placeholder="Subject / Code…" oninput="applyFilters()">
+  </div>
+  <div class="spacer"></div>
+  <button class="sbtn sbtn-white" onclick="resetFilters()" style="padding:6px 14px;font-size:.77rem;">✕ Clear</button>
+</div>
+
+<!-- ── Dept jump links ──────────────────────────────────────────────────────────── -->
+<div id="deptJumps" style="display:flex;flex-wrap:wrap;gap:8px;padding:0 32px 14px;"></div>
+
+<!-- ── Main table ─────────────────────────────────────────────────────────────── -->
+<div class="table-wrap">
+{% if timeslots %}
+<table class="ce-table" id="ceTable">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Department</th>
+      <th>Faculty Name</th>
+      <th>Subject Name</th>
+      <th>Subject Code</th>
+      <th>Class / Sem</th>
+      <th>Group</th>
+      <th title="Lectures per week">L</th>
+      <th title="Tutorials per week">T</th>
+      <th title="Practicals per week">P</th>
+      <th class="wl-col" title="Auto-calculated total L+T+P for this professor across all their slots">Total Workload (Prof)</th>
+    </tr>
+  </thead>
+  <tbody id="ceBody">
+  {% for ts in timeslots %}
+  <tr data-id="{{ ts.id }}"
+      data-prof-id="{{ ts.professor.id }}"
+      data-orig-prof="{{ ts.professor.id }}"
+      data-prof-max="{{ ts.professor.max_workload_hours_per_week }}"
+      data-dept="{{ ts.section.course.department.name|default:'' }}"
+      data-orig-subj-name="{{ ts.subject.name|escapejs }}"
+      data-orig-subj-code="{{ ts.subject.code|default:''|escapejs }}"
+      data-orig-lec="{{ ts.subject.lectures_per_week }}"
+      data-orig-tut="{% if ts.subject.subject_type == 'TUTORIAL' %}{{ ts.subject.lectures_per_week }}{% else %}0{% endif %}"
+      data-orig-prac="{% if ts.subject.subject_type == 'LAB' %}{{ ts.subject.lectures_per_week }}{% else %}0{% endif %}">
+
+    <td style="color:var(--muted);font-size:.73rem;width:34px;">{{ forloop.counter }}</td>
+
+    <td><span class="dept-badge">{{ ts.section.course.department.name|default:"—" }}</span></td>
+
+    <!-- Professor dropdown -->
+    <td>
+      <select class="inline-select field-prof" style="min-width:140px;"
+              onchange="markDirty(this); scheduleAutoSave(); recalcWorkload();">
+        {% for p in professors %}
+        <option value="{{ p.id }}" data-max="{{ p.max_workload_hours_per_week }}"
+                {% if p.id == ts.professor.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </td>
+
+    <!-- Subject name -->
+    <td>
+      <span class="editable-text field-subj-name" contenteditable="false"
+            onclick="makeEditable(this)" onblur="commitText(this)"
+            onkeydown="handleKey(event,this)">{{ ts.subject.name }}</span>
+    </td>
+
+    <!-- Subject code -->
+    <td>
+      <span class="editable-text field-subj-code" contenteditable="false"
+            onclick="makeEditable(this)" onblur="commitText(this)"
+            onkeydown="handleKey(event,this)">{{ ts.subject.code|default:"—" }}</span>
+    </td>
+
+    <!-- Class/Sem -->
+    <td style="white-space:nowrap;">
+      {% if ts.section %}{{ ts.section.course.get_display_name }} {{ ts.section.get_year_display_label }}{% else %}—{% endif %}
+    </td>
+
+    <!-- Group -->
+    <td><strong>{% if ts.section %}{{ ts.section.group }}{% else %}—{% endif %}</strong></td>
+
+    <!-- L -->
+    <td><input type="number" class="inline-input inline-num field-lec" oninput="validateNum(this)"
+               value="{{ ts.subject.lectures_per_week }}" min="0" max="30"
+               onchange="markDirty(this); scheduleAutoSave(); recalcWorkload();"></td>
+
+    <!-- T -->
+    <td><input type="number" class="inline-input inline-num field-tut" oninput="validateNum(this)"
+               value="{% if ts.subject.subject_type == 'TUTORIAL' %}{{ ts.subject.lectures_per_week }}{% else %}0{% endif %}"
+               min="0" max="30"
+               onchange="markDirty(this); scheduleAutoSave(); recalcWorkload();"></td>
+
+    <!-- P -->
+    <td><input type="number" class="inline-input inline-num field-prac" oninput="validateNum(this)"
+               value="{% if ts.subject.subject_type == 'LAB' %}{{ ts.subject.lectures_per_week }}{% else %}0{% endif %}"
+               min="0" max="30"
+               onchange="markDirty(this); scheduleAutoSave(); recalcWorkload();"></td>
+
+    <!-- Workload pill -->
+    <td class="wl-cell">
+      <span class="wl-pill wl-zero" data-prof-pill="{{ ts.professor.id }}">—</span>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  <div class="icon">📭</div>
+  <p>No timetable data yet. Please run <strong>Smart Generate</strong> first.</p>
+  <a href="/generate-smart/" style="display:inline-block;margin-top:16px;padding:10px 22px;
+    background:var(--blue);color:#fff;border-radius:10px;font-weight:700;text-decoration:none;">
+    ⚡ Smart Generate
+  </a>
+</div>
+{% endif %}
+</div>
+
+<!-- ── Workload Summary ───────────────────────────────────────────────────────── -->
+{% if timeslots %}
+<div id="wlSummarySection" class="section-title" style="display:flex;align-items:center;gap:12px;padding:24px 32px 10px;">
+  <span style="font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;color:var(--text);">📊 Professor Workload Summary</span>
+  <a href="/workload-report/" target="_blank"
+     style="font-size:.75rem;font-weight:700;padding:4px 12px;border-radius:8px;
+            background:var(--purple-light);color:var(--purple);text-decoration:none;white-space:nowrap;">
+    📋 Full Workload Report ↗
+  </a>
+  <span style="flex:1;height:2px;background:var(--border);border-radius:2px;display:block;"></span>
+</div>
+<div class="wl-summary-wrap">
+  <table class="wl-summary-table" id="wlSummaryTable">
+    <thead>
+      <tr id="wlSummaryHead">
+        <th>#</th>
+        <th onclick="sortSummary(0)" style="cursor:pointer;" title="Sort by faculty">Faculty Name ↕</th>
+        <th onclick="sortSummary(1)" style="cursor:pointer;" title="Sort by dept">Department ↕</th>
+        <th>Subjects Assigned</th>
+        <th onclick="sortSummary(2)" style="text-align:center;cursor:pointer;" title="Sort by L">L ↕</th>
+        <th onclick="sortSummary(3)" style="text-align:center;cursor:pointer;" title="Sort by T">T ↕</th>
+        <th onclick="sortSummary(4)" style="text-align:center;cursor:pointer;" title="Sort by P">P ↕</th>
+        <th onclick="sortSummary(5)" style="text-align:center;cursor:pointer;" title="Sort by total">Total ↕</th>
+        <th style="text-align:center;">Max Allowed</th>
+        <th style="min-width:200px;">Workload Bar</th>
+        <th onclick="sortSummary(6)" style="text-align:center;cursor:pointer;" title="Sort by status">Status ↕</th>
+      </tr>
+    </thead>
+    <tbody id="wlSummaryBody">
+      <!-- Populated by JS: buildSummaryTable() -->
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">Grand Total</td>
+        <td id="sumL"  style="text-align:center;">—</td>
+        <td id="sumT"  style="text-align:center;">—</td>
+        <td id="sumP"  style="text-align:center;">—</td>
+        <td id="sumWL" style="text-align:center;">—</td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endif %}
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+const dirtyRows = new Set();
+let autoSaveTimer = null;
+let autoSaveEnabled = true;
+
+function getCsrf(){
+  // Try cookie first, then meta tag (works with both session and token auth)
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  if(m) return m[1];
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.content : '';
+}
+
+// ─── Dirty tracking ───────────────────────────────────────────────────────────
+function markDirty(el){
+  const row = el.closest('tr');
+  row.classList.add('dirty');
+  dirtyRows.add(row.dataset.id);
+  document.getElementById('statDirty').textContent = dirtyRows.size;
+}
+
+// ─── Auto-save (debounced 3 s) ────────────────────────────────────────────────
+function scheduleAutoSave(){
+  if(!autoSaveEnabled) return;
+  clearTimeout(autoSaveTimer);
+  setBadge('saving','⏳ Auto-saving…');
+  autoSaveTimer = setTimeout(()=> saveAll(true), 3000);
+}
+
+function setBadge(type, msg){
+  const b = document.getElementById('autosaveBadge');
+  b.className = `autosave-badge ${type}`;
+  b.textContent = msg;
+  if(type==='saved') setTimeout(()=>{ b.className='autosave-badge'; b.textContent='● Auto-save on'; },4000);
+}
+
+// ─── Workload calculation ─────────────────────────────────────────────────────
+function recalcWorkload(){
+  // Step 1: aggregate per professor
+  const wlMap = {};  // profId -> { total, maxWL, L, T, P, subjSet, deptSet }
+
+  document.querySelectorAll('#ceBody tr').forEach(row => {
+    const sel    = row.querySelector('.field-prof');
+    if(!sel) return;
+    if(row.style.display === 'none') return; // skip filtered rows
+    const profId = sel.value;
+    const opt    = sel.options[sel.selectedIndex];
+    const maxWL  = parseInt(opt?.dataset?.max || row.dataset.profMax || 0);
+    const profName = opt ? opt.textContent.trim() : '—';
+    const l = parseInt(row.querySelector('.field-lec' )?.value || 0);
+    const t = parseInt(row.querySelector('.field-tut' )?.value || 0);
+    const p = parseInt(row.querySelector('.field-prac')?.value || 0);
+    const subjName = (row.querySelector('.field-subj-name')?.textContent||'').trim();
+    const dept     = row.dataset.dept || '';
+
+    if(!wlMap[profId]){
+      wlMap[profId] = { total:0, L:0, T:0, P:0, maxWL, profName,
+                        subjSet: new Set(), deptSet: new Set() };
+    }
+    const entry = wlMap[profId];
+    entry.total += l + t + p;
+    entry.L     += l;
+    entry.T     += t;
+    entry.P     += p;
+    if(maxWL > 0) entry.maxWL = maxWL;
+    if(subjName && subjName !== '—') entry.subjSet.add(subjName);
+    if(dept) entry.deptSet.add(dept);
+  });
+
+  // Step 2: update pills in main table
+  document.querySelectorAll('#ceBody tr').forEach(row => {
+    const sel  = row.querySelector('.field-prof');
+    const pill = row.querySelector('[data-prof-pill]');
+    if(!sel || !pill) return;
+    const profId = sel.value;
+    pill.dataset.profPill = profId;
+    const { total, maxWL } = wlMap[profId] || { total:0, maxWL:0 };
+    setWlPill(pill, total, maxWL);
+  });
+
+  // Step 3: update stats bar
+  let grand=0, overloaded=0;
+  Object.values(wlMap).forEach(({total, maxWL})=>{
+    grand += total;
+    if(maxWL>0 && total>maxWL) overloaded++;
+  });
+  document.getElementById('statTotalWL').textContent    = grand;
+  document.getElementById('statOverloaded').textContent = overloaded;
+
+  // Step 4: rebuild summary table
+  buildSummaryTable(wlMap);
+}
+
+function setWlPill(pill, total, maxWL){
+  if(total === 0){
+    pill.className = 'wl-pill wl-zero';
+    pill.textContent = '0 hrs / wk';
+  } else if(maxWL > 0 && total > maxWL){
+    pill.className = 'wl-pill wl-over';
+    pill.textContent = `${total} hrs ⚠️ (limit ${maxWL})`;
+  } else if(maxWL > 0 && total >= Math.round(maxWL * 0.85)){
+    pill.className = 'wl-pill wl-near';
+    pill.textContent = `${total} hrs / wk (≥85 %)`;
+  } else {
+    pill.className = 'wl-pill wl-ok';
+    pill.textContent = `${total} hrs / wk`;
+  }
+}
+
+function buildSummaryTable(wlMap){
+  const tbody = document.getElementById('wlSummaryBody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+
+  const rows = Object.entries(wlMap).sort((a,b)=>
+    a[1].profName.localeCompare(b[1].profName));
+
+  let grandL=0, grandT=0, grandP=0, grandWL=0;
+  let idx = 1;
+
+  rows.forEach(([profId, d]) => {
+    const { profName, L, T, P, total, maxWL, subjSet, deptSet } = d;
+    grandL += L; grandT += T; grandP += P; grandWL += total;
+
+    const pct    = maxWL > 0 ? Math.min(Math.round(total / maxWL * 100), 100) : null;
+    const over   = maxWL > 0 && total > maxWL;
+    const near   = !over && maxWL > 0 && total >= Math.round(maxWL * 0.85);
+    const barCls = over ? 'prog-over' : near ? 'prog-near' : 'prog-ok';
+    const statusEmoji = over ? '🔴 Over limit' : near ? '🟡 Near limit' : total > 0 ? '🟢 OK' : '⬜ No load';
+
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.title = `Click to highlight ${profName}'s rows in main table`;
+    tr.onclick = () => highlightProf(profId);
+    tr.innerHTML = `
+      <td style="color:var(--muted);font-size:.73rem;">${idx++}</td>
+      <td><strong>${profName}</strong></td>
+      <td>${[...deptSet].join(', ') || '—'}</td>
+      <td style="font-size:.78rem;color:var(--muted);">${[...subjSet].join(', ') || '—'}</td>
+      <td style="text-align:center;font-weight:700;">${L}</td>
+      <td style="text-align:center;font-weight:700;">${T}</td>
+      <td style="text-align:center;font-weight:700;">${P}</td>
+      <td style="text-align:center;">
+        <span class="wl-pill ${over?'wl-over':near?'wl-near':total>0?'wl-ok':'wl-zero'}"
+              style="font-size:.8rem;padding:4px 12px;">${total} hrs</span>
+      </td>
+      <td style="text-align:center;color:var(--muted);">${maxWL > 0 ? maxWL+' hrs' : '—'}</td>
+      <td>
+        ${pct !== null ? `
+          <div style="display:flex;align-items:center;">
+            <div class="prog-bar-wrap"><div class="prog-bar ${barCls}" style="width:${pct}%;"></div></div>
+            <span class="pct-lbl" style="color:${over?'var(--red)':near?'var(--amber)':'var(--green)'};">${pct}%</span>
+          </div>` : '<span style="color:var(--muted);font-size:.75rem;">No limit set</span>'}
+      </td>
+      <td style="text-align:center;font-size:.8rem;">${statusEmoji}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Footer totals
+  const el = id => document.getElementById(id);
+  if(el('sumL'))  el('sumL').textContent  = grandL;
+  if(el('sumT'))  el('sumT').textContent  = grandT;
+  if(el('sumP'))  el('sumP').textContent  = grandP;
+  if(el('sumWL')) el('sumWL').textContent = grandWL + ' hrs';
+}
+
+// ─── Inline text editing ──────────────────────────────────────────────────────
+function makeEditable(el){
+  el.contentEditable = 'true';
+  el.classList.add('editing');
+  el.focus();
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(r);
+}
+function commitText(el){
+  el.contentEditable = 'false';
+  el.classList.remove('editing');
+  markDirty(el);
+  scheduleAutoSave();
+}
+function handleKey(e, el){
+  if(e.key === 'Enter'){ e.preventDefault(); el.blur(); }
+  if(e.key === 'Escape'){ el.contentEditable='false'; el.classList.remove('editing'); }
+}
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+function applyFilters(){
+  const dept   = document.getElementById('filterDept').value.toLowerCase();
+  const profId = document.getElementById('filterProf').value;
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  let visible  = 0;
+  document.querySelectorAll('#ceBody tr').forEach(row => {
+    const ok = (!dept   || (row.dataset.dept||'').toLowerCase().includes(dept))
+            && (!profId || (row.querySelector('.field-prof')?.value||'') === profId)
+            && (!q      || row.textContent.toLowerCase().includes(q));
+    row.style.display = ok ? '' : 'none';
+    if(ok){
+      visible++;
+      // Re-number visible rows dynamically
+      const numCell = row.querySelector('td:first-child');
+      if(numCell) numCell.textContent = visible;
+    }
+  });
+  // Update visible count
+  const totalEl = document.getElementById('statTotal');
+  const total   = document.querySelectorAll('#ceBody tr').length;
+  if(totalEl) totalEl.textContent = (visible < total) ? `${visible} / ${total}` : total;
+  recalcWorkload(); // refresh summary for visible rows only
+}
+function resetFilters(){
+  ['filterDept','filterProf','searchInput'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value='';
+  });
+  applyFilters();
+}
+
+// ─── Save ─────────────────────────────────────────────────────────────────────
+function buildRowPayload(row){
+  const nameEl = row.querySelector('.field-subj-name');
+  const codeEl = row.querySelector('.field-subj-code');
+  return {
+    id:          parseInt(row.dataset.id),
+    professor_id:parseInt(row.querySelector('.field-prof').value),
+    lectures:    parseInt(row.querySelector('.field-lec' ).value) || 0,
+    tutorials:   parseInt(row.querySelector('.field-tut' ).value) || 0,
+    practicals:  parseInt(row.querySelector('.field-prac').value) || 0,
+    subject_name: nameEl ? nameEl.textContent.trim() : '',
+    subject_code: codeEl
+      ? (codeEl.textContent.trim() === '—' ? '' : codeEl.textContent.trim())
+      : '',
+  };
+}
+
+async function saveAll(isAuto=false){
+  clearTimeout(autoSaveTimer);
+
+  // Auto-save: only send dirty rows.  Manual save: send all rows.
+  let rows;
+  if(isAuto){
+    if(dirtyRows.size === 0){ setBadge('saved','✅ Nothing to save'); return; }
+    rows = [...document.querySelectorAll('#ceBody tr')]
+             .filter(r => dirtyRows.has(r.dataset.id));
+  } else {
+    rows = [...document.querySelectorAll('#ceBody tr')];
+  }
+  const payload = rows.map(buildRowPayload);
+
+  if(!isAuto) setBadge('saving',`⏳ Saving ${payload.length} row(s)…`);
+
+  try {
+    const res  = await fetch('/combine-edit/save/', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':getCsrf()},
+      body:JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if(data.ok){
+      dirtyRows.clear();
+      document.querySelectorAll('#ceBody tr.dirty').forEach(r=>{
+        r.classList.remove('dirty');
+        r.style.transition = 'background .25s';
+        r.style.background = '#dcfce7';
+        setTimeout(()=>{ r.style.background=''; }, 1000);
+      });
+      document.getElementById('statDirty').textContent = 0;
+      const totalRows = document.querySelectorAll('#ceBody tr').length;
+      const stEl = document.getElementById('statTotal');
+      if(stEl) stEl.textContent = totalRows;
+      setBadge('saved', isAuto ? '✅ Auto-saved' : `✅ Saved ${data.saved} slots`);
+      if(!isAuto) toast(`✅ ${data.saved} slot(s) saved!`,'success');
+      (data.warnings||[]).forEach(w=>toast(`⚠️ ${w}`,'warn'));
+      // Refresh workload pills from server-confirmed totals
+      if(data.workload_totals){
+        Object.entries(data.workload_totals).forEach(([pid, total])=>{
+          document.querySelectorAll(`[data-prof-pill="${pid}"]`).forEach(pill=>{
+            const row = pill.closest('tr');
+            const maxWL = row ? parseInt(row.dataset.profMax||0) : 0;
+            setWlPill(pill, total, maxWL);
+          });
+        });
+      }
+    } else {
+      setBadge('error','❌ Save failed');
+      (data.errors||['Unknown error']).slice(0,5).forEach(e=>toast(`❌ ${e}`,'error'));
+    }
+  } catch(err){
+    setBadge('error','❌ Network error');
+    if(!isAuto) toast(`Network error: ${err.message}`,'error');
+  }
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type='success'){
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(()=>{
+    t.style.animation='slideOut .3s ease forwards';
+    setTimeout(()=>t.remove(),300);
+  },4500);
+}
+
+// ─── Highlight prof rows from summary click ──────────────────────────────────
+let lastHighlightedProf = null;
+function highlightProf(profId){
+  const clearing = lastHighlightedProf === String(profId);
+  document.querySelectorAll('#ceBody tr').forEach(row => {
+    const sel = row.querySelector('.field-prof');
+    if(!sel) return;
+    if(clearing){
+      row.style.outline = '';
+    } else {
+      row.style.outline = (sel.value === String(profId))
+        ? '2px solid var(--blue)' : '';
+    }
+  });
+  lastHighlightedProf = clearing ? null : String(profId);
+  if(!clearing){
+    const first = [...document.querySelectorAll('#ceBody tr')]
+      .find(r => r.querySelector('.field-prof')?.value === String(profId)
+                 && r.style.display !== 'none');
+    if(first) first.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+
+// ─── Validate numeric inputs ──────────────────────────────────────────────────
+function validateNum(el){
+  const v = parseInt(el.value);
+  const bad = isNaN(v) || v < 0 || v > parseInt(el.max || 30);
+  el.classList.toggle('out-of-range', bad);
+}
+
+// ─── Dept jump links (built from table data) ─────────────────────────────────
+function buildDeptAnchors(){
+  const jumps = document.getElementById('deptJumps');
+  if(!jumps) return;
+  const seen  = new Set();
+  document.querySelectorAll('#ceBody tr').forEach(row => {
+    const dept = (row.dataset.dept || '').trim();
+    if(!dept || seen.has(dept)) return;
+    seen.add(dept);
+    // Mark first row of each dept
+    const slug = dept.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+    row.id = 'dept-' + slug;
+    // Build jump pill
+    const a = document.createElement('a');
+    a.href  = '#dept-' + slug;
+    a.textContent = dept;
+    a.style.cssText = 'font-size:.75rem;font-weight:700;padding:5px 14px;border-radius:20px;' +
+      'text-decoration:none;background:var(--purple-light);color:var(--purple);' +
+      'border:1.5px solid rgba(124,58,237,.2);transition:all .18s;display:inline-block;';
+    a.onmouseenter = ()=>{ a.style.background='var(--purple)'; a.style.color='#fff'; };
+    a.onmouseleave = ()=>{ a.style.background='var(--purple-light)'; a.style.color='var(--purple)'; };
+    jumps.appendChild(a);
+  });
+  // Hide jump bar if only one dept or none
+  if(seen.size <= 1) jumps.style.display = 'none';
+}
+
+// ─── Sort workload summary ────────────────────────────────────────────────────
+let wlSortCol = -1, wlSortAsc = true;
+function sortSummary(colIdx){
+  const tbody = document.getElementById('wlSummaryBody');
+  if(!tbody) return;
+  if(wlSortCol === colIdx) wlSortAsc = !wlSortAsc;
+  else { wlSortCol = colIdx; wlSortAsc = true; }
+
+  const rows = [...tbody.querySelectorAll('tr')];
+  rows.sort((a, b) => {
+    const cells = {0:1, 1:2, 2:4, 3:5, 4:6, 5:7, 6:10}; // colIdx -> td index
+    const tdIdx = cells[colIdx] ?? 1;
+    const av = a.cells[tdIdx]?.textContent.trim() || '';
+    const bv = b.cells[tdIdx]?.textContent.trim() || '';
+    const an = parseFloat(av), bn = parseFloat(bv);
+    let cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
+    return wlSortAsc ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+
+  // Update header arrows
+  document.querySelectorAll('#wlSummaryHead th').forEach((th,i) => {
+    th.textContent = th.textContent.replace(' ↑',' ↕').replace(' ↓',' ↕');
+  });
+  const headCols = [1,2,4,5,6,7,10];
+  const thIdx = headCols.indexOf(Object.values({0:1,1:2,2:4,3:5,4:6,5:7,6:10})[colIdx]);
+  // simpler: just update sort col header
+  const allTh = document.querySelectorAll('#wlSummaryHead th');
+  const sortable = [1,2,4,5,6,7,10];
+  sortable.forEach((tdI, si) => {
+    const th = allTh[tdI-1] || allTh[si+1];
+    if(si === colIdx && th) th.innerHTML = th.innerHTML.replace('↕', wlSortAsc ? '↑' : '↓');
+  });
+}
+
+// ─── Undo All ─────────────────────────────────────────────────────────────────
+function undoAll(){
+  if(dirtyRows.size === 0){ toast('Nothing to undo — no unsaved changes.','warn'); return; }
+  if(!confirm(`Revert all ${dirtyRows.size} unsaved change(s) back to last saved state?`)) return;
+  document.querySelectorAll('#ceBody tr.dirty').forEach(row => {
+    // Professor dropdown
+    const profSel = row.querySelector('.field-prof');
+    if(profSel && row.dataset.origProf) profSel.value = row.dataset.origProf;
+    // Subject name (contenteditable span)
+    const nameEl = row.querySelector('.field-subj-name');
+    if(nameEl) nameEl.textContent = row.dataset.origSubjName || nameEl.textContent;
+    // Subject code (contenteditable span)
+    const codeEl = row.querySelector('.field-subj-code');
+    if(codeEl) codeEl.textContent = row.dataset.origSubjCode || codeEl.textContent;
+    // L input
+    const lecEl  = row.querySelector('.field-lec');
+    if(lecEl)  lecEl.value  = row.dataset.origLec  ?? lecEl.value;
+    // T input
+    const tutEl  = row.querySelector('.field-tut');
+    if(tutEl)  tutEl.value  = row.dataset.origTut  ?? tutEl.value;
+    // P input
+    const pracEl = row.querySelector('.field-prac');
+    if(pracEl) pracEl.value = row.dataset.origPrac ?? pracEl.value;
+
+    row.classList.remove('dirty');
+    // Brief amber flash to indicate reversion
+    row.style.transition = 'background .2s';
+    row.style.background = '#fef3c7';
+    setTimeout(() => { row.style.background = ''; }, 800);
+  });
+  dirtyRows.clear();
+  document.getElementById('statDirty').textContent = 0;
+  recalcWorkload();
+  toast('All changes reverted to last saved state.','warn');
+}
+
+// ─── Unsaved-changes guard ────────────────────────────────────────────────────
+window.addEventListener('beforeunload', e => {
+  clearTimeout(autoSaveTimer);
+  if(dirtyRows.size > 0){
+    e.preventDefault();
+    e.returnValue = `You have ${dirtyRows.size} unsaved change(s). Leave anyway?`;
+    return e.returnValue;
+  }
+});
+
+// ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if((e.ctrlKey||e.metaKey) && e.key==='s'){
+    e.preventDefault(); saveAll(false);
+  }
+  if((e.ctrlKey||e.metaKey) && e.key==='z'){
+    const active = document.activeElement;
+    const editing = active && (active.tagName==='INPUT' || active.contentEditable==='true');
+    if(!editing){ e.preventDefault(); undoAll(); }
+  }
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+  buildDeptAnchors();
+  // De-dup dept filter
+  const sel = document.getElementById('filterDept');
+  if(sel){
+    const seen = new Set();
+    [...sel.options].forEach(o=>{ if(seen.has(o.value)) o.remove(); else seen.add(o.value); });
+  }
+  recalcWorkload();
+});
+</script>
+</body>
+</html>

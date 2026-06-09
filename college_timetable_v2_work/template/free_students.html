@@ -1,0 +1,200 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free Students — </title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--surface:#fff;--border:#e0e3ea;
+  --blue:#1565c0;--blue-light:#e3f0ff;--blue-mid:#1e88e5;
+  --green:#16a34a;--green-light:#ecfdf5;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --purple:#7c3aed;--purple-light:#f5f3ff;
+  --text:#1c2333;--muted:#607d8b;--white:#fff;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;}
+.nav-links a{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.85);text-decoration:none;
+  padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{max-width:1100px;margin:0 auto;padding:32px 20px;}
+h1{font-family:'Roboto',sans-serif;font-size:1.6rem;font-weight:700;color:var(--blue);margin-bottom:4px;}
+.sub{color:var(--muted);font-size:.9rem;margin-bottom:24px;}
+
+/* Filter bar */
+.filter-bar{background:var(--surface);border:1px solid var(--border);border-radius:7px;
+  padding:20px 24px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:28px;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.filter-group{display:flex;flex-direction:column;gap:6px;}
+.filter-group label{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.filter-group select{padding:8px 14px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:.9rem;font-family:inherit;background:#fff;color:var(--text);min-width:140px;outline:none;}
+.filter-group select:focus{border-color:var(--blue);}
+.btn-search{padding:9px 22px;background:var(--blue);color:#fff;border:none;border-radius:8px;
+  font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .2s;}
+.btn-search:hover{background:var(--blue-mid);}
+.btn-clear{padding:9px 16px;background:transparent;color:var(--muted);border:1.5px solid var(--border);
+  border-radius:8px;font-size:.9rem;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;}
+
+/* Summary cards */
+.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:16px 22px;flex:1;min-width:160px;box-shadow:0 2px 6px rgba(0,0,0,.05);}
+.card-n{font-family:'Roboto',sans-serif;font-size:2rem;font-weight:700;color:var(--blue);}
+.card-l{font-size:.8rem;color:var(--muted);margin-top:2px;}
+
+/* Result blocks */
+.result-block{background:var(--surface);border:1px solid var(--border);border-radius:7px;
+  margin-bottom:20px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.result-header{display:flex;justify-content:space-between;align-items:center;
+  padding:14px 20px;background:linear-gradient(135deg,var(--blue-light),#fff);
+  border-bottom:1px solid var(--border);}
+.result-meta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.badge{display:inline-flex;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600;}
+.b-day{background:#e3f0ff;color:#0c447c;}
+.b-slot{background:#fffbeb;color:#633806;}
+.b-dept{background:#f5f3ff;color:#3c3489;}
+.b-total{background:#ecfdf5;color:#065f46;font-size:.85rem;font-weight:700;padding:4px 14px;}
+.sections-grid{display:flex;flex-wrap:wrap;gap:12px;padding:16px 20px;}
+.sec-card{background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;
+  padding:12px 16px;min-width:180px;display:flex;flex-direction:column;gap:4px;}
+.sec-name{font-size:.88rem;font-weight:600;color:var(--text);}
+.sec-count{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--purple);}
+.sec-label{font-size:.75rem;color:var(--muted);}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-icon{font-size:3rem;margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/">← Dashboard</a>
+    <a href="/free-rooms/">🚪 Free Rooms</a>
+    <a href="/free-students/" class="active">🎓 Free Students</a>
+    <a href="/workload-report/">📊 Workload</a>
+  </div>
+</nav>
+
+<main>
+  <h1>🎓 Free Students</h1>
+  <p class="sub">Dean view — check which sections have no class scheduled at a given time</p>
+
+  <!-- Filter Bar -->
+  <form method="get" class="filter-bar">
+    <div class="filter-group">
+      <label>Department</label>
+      <select name="dept">
+        <option value="">All Departments</option>
+        {% for dept in departments %}
+          <option value="{{ dept.name }}" {% if filter_dept == dept.name %}selected{% endif %}>{{ dept.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Day</label>
+      <select name="day">
+        <option value="">All Days</option>
+        {% for d in all_days %}
+          <option value="{{ d }}" {% if filter_day == d %}selected{% endif %}>{{ d }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Slot / Time</label>
+      <select name="slot">
+        <option value="">All Slots</option>
+        {% for s in all_slots %}
+          <option value="{{ s }}" {% if filter_slot == s|stringformat:"s" %}selected{% endif %}>
+            Slot {{ s }} — {{ slot_display|get_item:s }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-search">🔍 Search</button>
+    <a href="/free-students/" class="btn-clear">✕ Clear</a>
+  </form>
+
+  <!-- Summary Cards -->
+  {% if results %}
+  <div class="summary">
+    <div class="card">
+      {% if grand_total %}
+      <div class="card-n">{{ grand_total }}</div>
+      <div class="card-l">Total Free Students</div>
+      {% else %}
+      <div class="card-n" style="font-size:1rem;color:#94a3b8;">Add class_count</div>
+      <div class="card-l">to sections CSV for totals</div>
+      {% endif %}
+    </div>
+    <div class="card">
+      <div class="card-n">{{ results|length }}</div>
+      <div class="card-l">Dept × Slot Combinations</div>
+    </div>
+    <div class="card">
+      <div class="card-n">{% if filter_day %}{{ filter_day }}{% else %}All{% endif %}</div>
+      <div class="card-l">Day Filter</div>
+    </div>
+    <div class="card">
+      <div class="card-n">{% if filter_slot_int %}{{ slot_display|get_item:filter_slot_int|default:filter_slot }}{% else %}All{% endif %}</div>
+      <div class="card-l">Slot Filter</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  {% for row in results %}
+  <div class="result-block">
+    <div class="result-header">
+      <div class="result-meta">
+        <span class="badge b-day">{{ row.day }}</span>
+        <span class="badge b-slot">{{ row.slot_display }}</span>
+        <span class="badge b-dept">🏛 {{ row.dept }}</span>
+        <span style="color:var(--muted);font-size:.85rem;">{{ row.section_count }} section{{ row.section_count|pluralize }}</span>
+      </div>
+      {% if row.has_counts %}
+        <span class="badge b-total">👥 {{ row.total_students }} students free</span>
+      {% else %}
+        <span class="badge b-total" style="background:#f1f5f9;color:#64748b;">{{ row.section_count }} section{{ row.section_count|pluralize }} free — add class_count to CSV for student totals</span>
+      {% endif %}
+    </div>
+    <div class="sections-grid">
+      {% for sec in row.sections %}
+      <div class="sec-card">
+        <div class="sec-name">{{ sec.section_label }}</div>
+        {% if sec.class_count %}
+        <div class="sec-count">{{ sec.class_count }}</div>
+        <div class="sec-label">students available</div>
+        {% else %}
+        <div class="sec-count" style="color:#94a3b8;font-size:1rem;">—</div>
+        <div class="sec-label">add class_count to CSV</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <div class="empty">
+    <div class="empty-icon">🎓</div>
+    <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px;">No results</div>
+    <div>Select Dept, Day and Slot above and click Search</div>
+    <div style="margin-top:8px;font-size:.85rem;">Make sure class_count is filled in your sections CSV</div>
+  </div>
+  {% endif %}
+</main>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;--red:#e02424;--text:#1c2333;--muted:#607d8b;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 24px;}
+.form-card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:44px;width:100%;max-width:500px;box-shadow:0 4px 24px rgba(26,86,219,.08);animation:pop .45s ease both;}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(14px)}to{opacity:1;transform:none}}
+.form-top{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid var(--border);}
+.form-icon{width:48px;height:48px;background:var(--blue-light);border:2px solid #bfdbfe;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.form-top h1{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:7px;}
+.field input,.field select{width:100%;padding:11px 14px;background:#f8faff;border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:.9rem;font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.buttons{display:flex;gap:12px;margin-top:24px;}
+.submit-btn{flex:1;padding:13px;background:var(--blue);color:#fff;border:none;border-radius:11px;font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;cursor:pointer;transition:all .2s;}
+.submit-btn:hover{background:#1648c0;box-shadow:0 4px 16px rgba(26,86,219,.35);}
+.cancel-btn{padding:13px 20px;background:var(--red);color:#fff;border:none;border-radius:11px;font-size:.9rem;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:all .2s;}
+.cancel-btn:hover{background:#c81e1e;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text">EduScheduler</span>
+  </div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</nav>
+<main>
+  <div class="form-card">
+    <div class="form-top">
+      <div class="form-icon">{{ icon }}</div>
+      <div><h1>{{ title }}</h1></div>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="field" id="field_{{ field.html_name }}"
+           {% if field.html_name == 'custom_name' %}style="display:none;"{% endif %}>
+        <label>{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<div style="color:#e02424;font-size:.75rem;margin-top:4px;">{{ field.errors.0 }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="buttons">
+        <button type="submit" class="submit-btn">✅ Save</button>
+        <a href="/" class="cancel-btn">✖ Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+<script>
+(function() {
+  var nameSelect = document.getElementById('id_name');
+  var customField = document.getElementById('field_custom_name');
+  if (!nameSelect || !customField) return;
+
+  function toggleCustom() {
+    if (nameSelect.value === 'CUSTOM') {
+      customField.style.display = '';
+      customField.querySelector('input').required = true;
+    } else {
+      customField.style.display = 'none';
+      customField.querySelector('input').required = false;
+    }
+  }
+
+  nameSelect.addEventListener('change', toggleCustom);
+  toggleCustom(); // run on page load (e.g. if form re-rendered with errors)
+})();
+</script>
+</body>
+</html>

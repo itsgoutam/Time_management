@@ -1,0 +1,71 @@
+====================================================
+  GTM SmartSchedule — v6 Setup & Run Instructions
+====================================================
+
+REQUIREMENTS:
+  pip install django qrcode pillow reportlab
+
+FIRST-TIME SETUP:
+  cd college_timetable_v2
+  python manage.py migrate
+  python manage.py runserver
+
+RE-RUN (already migrated):
+  python manage.py runserver
+  Open: http://127.0.0.1:8000/
+
+====================================================
+  v6 NEW FEATURES (on top of v5)
+====================================================
+
+1. QUICK PROFESSOR BLOCK (during subject assignment)
+   - The Add/Edit Subject form now has a RIGHT PANEL:
+       "Quick Professor Block"
+   - Select: professor, day, start slot, end slot (optional), type
+   - Click "Block This Slot" — saved instantly, no page reload needed
+   - Blocked slots are PERMANENT (not session-only) and respected
+     by the timetable generator exactly like regular occupied times
+   - The "is_quick_block" flag marks them so you can distinguish
+     quick blocks from regular meeting/mentoring blocks
+   - All current professor blocks are listed in the right panel
+     with a 🗑 delete button for each
+   - When you select a professor in the subject form, the page
+     live-loads their existing blocked slots via AJAX (no refresh)
+   - Delete quick blocks: /quick-block/<id>/delete/
+
+2. LAB / ROOM OCCUPANCY MANAGEMENT
+   - Each room/lab schedule page now has a 🚧 "Block Time Slot" button
+   - Add a block with: room, day, slot range, purpose, description
+   - Purposes: Workshop/Seminar, Maintenance, Examination, College Event, Other
+   - Blocked slots show as RED "🚧" cells in the room timetable grid
+   - All blocks are listed in a panel above the timetable with Edit/Delete
+   - URLs:
+       /room/<id>/add-occupied/        ← block a room
+       /room-occupied/<id>/edit/       ← edit a block
+       /room-occupied/<id>/delete/     ← delete a block
+
+3. SMART CONFLICT HANDLING (all enforced in generator)
+   - Professor + room conflicts fully prevented:
+       ✅ ProfessorOccupiedTime (regular blocks)
+       ✅ ProfessorOccupiedTime with is_quick_block=True (quick blocks)
+       ✅ RoomOccupiedTime (workshop, maintenance, exam blocks)
+   - Both professor_busy and room_busy dicts are pre-seeded
+     before any scheduling begins
+   - No class is placed in a blocked professor or blocked room slot
+
+4. OPTIMIZATION REPORTING (after generation)
+   - Workload balance: avg hours/week calculated, overloaded (>140%)
+     and underutilised (<60%) professors flagged with info messages
+   - Lab utilisation: labs with ≤2 slots used per week are flagged
+   - All reports appear as info banners after generation
+
+AJAX ENDPOINT:
+  GET /api/professor/<id>/blocks/
+  Returns JSON: { professor, blocks: [{id, day, time_range, activity, is_quick, description}] }
+
+URL REFERENCE (new in v6):
+  /room/<id>/add-occupied/             add room occupied block
+  /room-occupied/<id>/edit/            edit room block
+  /room-occupied/<id>/delete/          delete room block
+  /quick-block/<id>/delete/            delete a quick professor block
+  /api/professor/<id>/blocks/          AJAX: get professor blocks

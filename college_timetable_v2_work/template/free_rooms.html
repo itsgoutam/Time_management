@@ -1,0 +1,355 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free Rooms &amp; Labs — EduScheduler</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--surface:#fff;--border:#e0e3ea;
+  --blue:#1565c0;--blue-light:#e3f0ff;--blue-mid:#1e88e5;
+  --green:#16a34a;--green-light:#ecfdf5;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --red:#d32f2f;--purple:#7c3aed;
+  --text:#1c2333;--muted:#607d8b;--white:#fff;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+
+/* ── NAV (mirrors dashboard) ── */
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;flex-wrap:wrap;}
+.nav-links a{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.85);text-decoration:none;
+  padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+.nav-links a.active{background:rgba(255,255,255,.22);color:#fff;font-weight:700;}
+
+main{padding:36px 40px;}
+
+/* ── HERO STRIP ── */
+.hero{background:linear-gradient(135deg,#0d47a1 0%,#1565c0 50%,#1e88e5 100%);
+  border-radius:20px;padding:30px 36px;margin-bottom:28px;
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 6px 28px rgba(21,101,192,.28);}
+.hero-left h1{font-family:'Roboto',sans-serif;font-size:1.75rem;font-weight:700;color:#fff;}
+.hero-left p{color:rgba(255,255,255,.75);font-size:.9rem;margin-top:6px;}
+.hero-stats{display:flex;gap:16px;}
+.stat-pill{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);
+  border-radius:6px;padding:10px 20px;text-align:center;}
+.stat-pill .num{font-family:'Roboto',sans-serif;font-size:1.6rem;font-weight:700;color:#fff;}
+.stat-pill .lbl{font-size:.72rem;color:rgba(255,255,255,.7);margin-top:2px;}
+
+/* ── FILTER CARD ── */
+.filter-card{background:var(--surface);border:2px solid var(--border);border-radius:8px;
+  padding:22px 28px;margin-bottom:24px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+.filter-card h3{font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;
+  color:var(--blue);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.filter-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;}
+.filter-group{display:flex;flex-direction:column;gap:5px;}
+.filter-group label{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.filter-group select{padding:9px 14px;border:1.5px solid var(--border);border-radius:10px;
+  font-family:inherit;font-size:.85rem;color:var(--text);background:#fff;cursor:pointer;
+  min-width:150px;transition:border-color .2s;}
+.filter-group select:focus{outline:none;border-color:var(--blue-mid);}
+.filter-actions{display:flex;gap:10px;margin-left:auto;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:10px;
+  font-size:.84rem;font-weight:700;cursor:pointer;text-decoration:none;border:none;transition:all .2s;}
+.btn-blue{background:var(--blue);color:#fff;}
+.btn-blue:hover{background:var(--blue-mid);}
+.btn-outline{background:#fff;color:var(--blue);border:2px solid var(--blue);}
+.btn-outline:hover{background:var(--blue-light);}
+.btn-green{background:var(--green);color:#fff;}
+.btn-green:hover{background:#15803d;}
+.btn-red-soft{background:#fef2f2;color:var(--red);border:1.5px solid #fecaca;}
+.btn-red-soft:hover{background:#fee2e2;}
+
+/* ── LEGEND BADGES ── */
+.legend{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
+  border-radius:20px;font-size:.75rem;font-weight:700;}
+.badge-class{background:#e3f0ff;color:var(--blue);}
+.badge-lab{background:#f3e8ff;color:var(--purple);}
+.badge-free{background:var(--green-light);color:var(--green);}
+
+/* ── TABLE ── */
+.table-wrap{background:var(--surface);border:2px solid var(--border);border-radius:8px;
+  overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07);}
+.table-header-bar{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 22px;border-bottom:2px solid var(--border);}
+.table-header-bar h3{font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;color:var(--text);}
+.export-group{display:flex;gap:8px;}
+
+table{width:100%;border-collapse:collapse;}
+thead th{background:var(--blue);color:#fff;padding:12px 16px;font-size:.8rem;
+  font-weight:700;text-align:left;letter-spacing:.03em;white-space:nowrap;}
+thead th:last-child{text-align:center;}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+tbody tr:hover{background:#f0f6ff;}
+tbody tr:last-child{border-bottom:none;}
+tbody td{padding:11px 16px;font-size:.84rem;vertical-align:middle;}
+
+.room-name{font-weight:700;color:var(--text);}
+.type-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;}
+.type-class{background:#e3f0ff;color:var(--blue);}
+.type-lab{background:#f3e8ff;color:var(--purple);}
+.day-badge{display:inline-block;padding:4px 10px;border-radius:8px;font-size:.75rem;
+  font-weight:700;background:var(--blue-light);color:var(--blue);}
+.slots-text{color:var(--green);font-weight:600;font-size:.83rem;}
+.slot-count{display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;background:var(--green-light);
+  color:var(--green);font-weight:700;font-size:.8rem;margin:auto;}
+
+/* ── EMPTY STATE ── */
+.empty{text-align:center;padding:60px 20px;}
+.empty .icon{font-size:3rem;margin-bottom:12px;}
+.empty h3{font-family:'Roboto',sans-serif;font-size:1.1rem;color:var(--text);margin-bottom:6px;}
+.empty p{font-size:.85rem;color:var(--muted);}
+
+/* ── GRID VIEW ── */
+.grid-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:24px;}
+.grid-card{background:var(--surface);border:2px solid var(--border);border-radius:7px;
+  padding:18px 20px;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:box-shadow .2s,border-color .2s;}
+.grid-card:hover{box-shadow:0 4px 18px rgba(21,101,192,.12);border-color:var(--blue-mid);}
+.gc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.gc-name{font-family:'Roboto',sans-serif;font-weight:700;font-size:.95rem;color:var(--text);}
+.gc-cap{font-size:.72rem;color:var(--muted);}
+.gc-day{font-size:.78rem;font-weight:700;color:var(--blue);margin-bottom:8px;}
+.gc-slots{font-size:.82rem;color:var(--green);font-weight:600;line-height:1.6;}
+
+/* ── VIEW TOGGLE ── */
+.view-toggle{display:flex;gap:6px;}
+.vt-btn{padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;
+  border:2px solid var(--border);background:#fff;color:var(--muted);transition:all .15s;}
+.vt-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+.day-section{margin-bottom:32px;}
+.day-section h4{font-family:'Roboto',sans-serif;font-size:1rem;font-weight:700;color:var(--blue);
+  padding:10px 16px;background:var(--blue-light);border-radius:10px;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;}
+
+@media(max-width:768px){
+  main{padding:20px 16px;}
+  .hero{flex-direction:column;gap:18px;}
+  .filter-row{flex-direction:column;}
+  .filter-actions{margin-left:0;}
+  .hero-stats{flex-wrap:wrap;justify-content:center;}
+}
+
+@media print{
+  nav,.filter-card,.view-toggle,.export-group,.filter-actions{display:none!important;}
+  main{padding:10px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="brand">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/">🏠 Dashboard</a>
+    <a href="/workload-report/">📋 Workload</a>
+    
+    <a href="/free-rooms/" class="active">🟢 Free Rooms</a>
+    <a href="/free-students/">🎓 Free Students</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ── HERO ── -->
+<div class="hero">
+  <div class="hero-left">
+    <h1>🟢 Free Rooms &amp; Labs</h1>
+    <p>View all available (unoccupied) rooms and labs — filter by day, time slot, or type.</p>
+  </div>
+  <div class="hero-stats">
+    <div class="stat-pill">
+      <div class="num">{{ rows|length }}</div>
+      <div class="lbl">Availability Entries</div>
+    </div>
+    <div class="stat-pill">
+      <div class="num">{{ total_free }}</div>
+      <div class="lbl">Total Free Slots</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── FILTERS ── -->
+<div class="filter-card">
+  <h3>🔍 Filter Options</h3>
+  <form method="get" id="filterForm">
+    <div class="filter-row">
+
+      <div class="filter-group">
+        <label>Day</label>
+        <select name="day" onchange="document.getElementById('filterForm').submit()">
+          <option value="">All Days</option>
+          {% for d in all_days %}
+          <option value="{{ d }}" {% if filter_day == d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Time Slot</label>
+        <select name="slot" onchange="document.getElementById('filterForm').submit()">
+          <option value="">All Time Slots</option>
+          {% for s in all_slots %}
+          <option value="{{ s }}" {% if filter_slot == s|stringformat:"s" %}selected{% endif %}>
+            Slot {{ s }} — {{ slot_display|dict_get:s }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Room Type</label>
+        <select name="type" onchange="document.getElementById('filterForm').submit()">
+          <option value="">All Types</option>
+          <option value="CLASSROOM" {% if filter_type == 'CLASSROOM' %}selected{% endif %}>🏫 Classroom Only</option>
+          <option value="LAB"       {% if filter_type == 'LAB'       %}selected{% endif %}>🔬 Lab Only</option>
+        </select>
+      </div>
+
+      <div class="filter-actions">
+        {% if filter_day or filter_slot or filter_type %}
+        <a href="/free-rooms/" class="btn btn-red-soft">✖ Clear Filters</a>
+        {% endif %}
+        <button type="submit" class="btn btn-blue">Apply</button>
+      </div>
+
+    </div>
+  </form>
+</div>
+
+<!-- ── LEGEND ── -->
+<div class="legend">
+  <span class="badge badge-class">🏫 Classroom</span>
+  <span class="badge badge-lab">🔬 Lab</span>
+  <span class="badge badge-free">✅ Free / Available</span>
+  <span style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <span style="font-size:.78rem;color:var(--muted);font-weight:600;">View:</span>
+    <button class="vt-btn active" id="btnTable" onclick="setView('table')">☰ Table</button>
+    <button class="vt-btn"        id="btnGrid"  onclick="setView('grid')">⊞ Grid</button>
+  </span>
+</div>
+
+<!-- ── TABLE VIEW ── -->
+<div id="viewTable">
+  <div class="table-wrap">
+    <div class="table-header-bar">
+      <h3>📋 Available Rooms &amp; Labs
+        {% if filter_day %} — {{ filter_day }}{% endif %}
+        {% if filter_slot %} — Slot {{ filter_slot }}{% endif %}
+        {% if filter_type %} — {{ filter_type|title }}{% endif %}
+      </h3>
+      <div class="export-group">
+        <a href="/free-rooms/pdf/?day={{ filter_day }}&slot={{ filter_slot }}&type={{ filter_type }}"
+           class="btn btn-green" target="_blank">⬇ Download PDF</a>
+        <button onclick="window.print()" class="btn btn-outline">🖨 Print</button>
+      </div>
+    </div>
+
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Room / Lab Name</th>
+          <th>Type</th>
+          <th>Capacity</th>
+          <th>Day</th>
+          <th>Free Time Slots</th>
+          <th style="text-align:center;"># Free</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="room-name">{{ row.room_name }}</td>
+          <td>
+            {% if row.room_type == 'Lab' %}
+              <span class="type-pill type-lab">🔬 Lab</span>
+            {% else %}
+              <span class="type-pill type-class">🏫 Class</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--muted);">{{ row.capacity }}</td>
+          <td><span class="day-badge">{{ row.day }}</span></td>
+          <td class="slots-text">✅ {{ row.free_slots_display }}</td>
+          <td style="text-align:center;"><span class="slot-count">{{ row.count }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      <div class="icon">🎉</div>
+      <h3>All rooms are occupied for this filter</h3>
+      <p>Try removing filters or selecting a different day / time slot.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── GRID VIEW ── -->
+<div id="viewGrid" style="display:none;">
+  {% if rows %}
+    {% regroup rows by day as day_list %}
+    {% for day_group in day_list %}
+    <div class="day-section">
+      <h4>📅 {{ day_group.grouper }}</h4>
+      <div class="grid-wrap">
+        {% for row in day_group.list %}
+        <div class="grid-card">
+          <div class="gc-top">
+            <span class="gc-name">{{ row.room_name }}</span>
+            {% if row.room_type == 'Lab' %}
+              <span class="type-pill type-lab">🔬 Lab</span>
+            {% else %}
+              <span class="type-pill type-class">🏫 Class</span>
+            {% endif %}
+          </div>
+          <div class="gc-cap" style="margin-bottom:8px;">Cap: {{ row.capacity }}</div>
+          <div class="gc-slots">✅ {{ row.free_slots_display }}</div>
+          <div style="margin-top:10px;font-size:.72rem;color:var(--muted);">{{ row.count }} slot(s) free</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      <div class="icon">🎉</div>
+      <h3>All rooms are occupied for this filter</h3>
+      <p>Try removing filters or selecting a different day / time slot.</p>
+    </div>
+  {% endif %}
+</div>
+
+</main>
+
+<script>
+function setView(v){
+  document.getElementById('viewTable').style.display = v==='table'?'block':'none';
+  document.getElementById('viewGrid').style.display  = v==='grid' ?'block':'none';
+  document.getElementById('btnTable').classList.toggle('active', v==='table');
+  document.getElementById('btnGrid').classList.toggle('active',  v==='grid');
+  localStorage.setItem('freeRoomsView', v);
+}
+// Restore last-used view
+(function(){
+  var saved = localStorage.getItem('freeRoomsView');
+  if(saved && saved !== 'table') setView(saved);
+})();
+</script>
+
+</body>
+</html>

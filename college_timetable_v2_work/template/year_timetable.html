@@ -1,0 +1,181 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ year_display }} Timetable — {{ course }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;
+  --red:#e02424;--text:#1c2333;--muted:#607d8b;
+  --theory-bg:#eff6ff;--theory-border:#bfdbfe;--theory-text:#1d4ed8;
+  --lab-bg:#f0fdf4;--lab-border:#bbf7d0;--lab-text:#15803d;
+  --tut-bg:#fdf4ff;--tut-border:#e9d5ff;--tut-text:#7c3aed;
+  --lunch-bg:#fff7ed;--lunch-border:#fed7aa;--lunch-text:#c2410c;}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);position:sticky;top:0;z-index:100;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;}
+.nav-links a{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+.btn-red{background:var(--red)!important;color:#fff!important;border-color:var(--red)!important;font-weight:600!important;}
+.btn-pdf{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;font-weight:600!important;}
+main{padding:36px 32px;max-width:1500px;margin:0 auto;}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.page-header h1{font-family:'Roboto',sans-serif;font-size:1.6rem;font-weight:700;color:var(--text);}
+.page-header h1 span{color:var(--blue);}
+.breadcrumb{font-size:.8rem;color:var(--muted);margin-bottom:20px;}
+.breadcrumb a{color:var(--blue);text-decoration:none;font-weight:600;}
+.section-block{margin-bottom:36px;}
+.section-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.section-label h2{font-family:'Roboto',sans-serif;font-size:1.1rem;font-weight:700;color:var(--text);}
+.section-label h2 .grp{color:var(--blue);}
+.room-chips{display:flex;gap:8px;}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:8px;font-size:.72rem;font-weight:600;border:1.5px solid;}
+.chip-room{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+.chip-lab{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}
+.tt-wrap{overflow-x:auto;border-radius:8px;box-shadow:0 2px 16px rgba(26,86,219,.08);}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:1100px;background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;}
+thead th{padding:13px 8px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:center;background:#f8faff;border-bottom:2px solid var(--border);width:120px;}
+thead th:first-child{text-align:center;width:100px;min-width:100px;background:var(--blue);color:#fff;}
+thead th.lunch-head{background:var(--lunch-bg);color:var(--lunch-text);width:100px;}
+tbody tr{transition:background .15s;}
+tbody tr:hover{background:#f5f8ff;}
+tbody td{padding:4px;vertical-align:middle;border-bottom:1px solid #eef2ff;width:120px;height:100px;}
+tbody td:first-child{padding:0;width:100px;min-width:100px;font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;color:var(--blue);text-align:center;vertical-align:middle;background:#f0f4ff;border-right:2px solid var(--border);}
+tbody tr:last-child td{border-bottom:none;}
+.cell{border-radius:9px;padding:8px 6px;width:100%;height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;}
+.cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
+.cell-lab{background:var(--lab-bg);border:1.5px solid var(--lab-border);}
+.cell-tut{background:var(--tut-bg);border:1.5px solid var(--tut-border);}
+.cell-empty{background:#fafbff;border:1.5px solid #eef2ff;}
+.cell-lunch{background:var(--lunch-bg);border:1.5px solid var(--lunch-border);align-items:center;justify-content:center;}
+.cell-name{font-size:.78rem;font-weight:700;line-height:1.3;}
+.cell-code{font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:1px 6px;border-radius:5px;margin-bottom:2px;display:inline-block;}
+.cell-theory .cell-code{background:#dbeafe;color:#1e40af;}
+.cell-lab    .cell-code{background:#dcfce7;color:#15803d;}
+.cell-tut    .cell-code{background:#ede9fe;color:#6d28d9;}
+.cell-theory .cell-name{color:var(--theory-text);}
+.cell-lab .cell-name{color:var(--lab-text);}
+.cell-tut .cell-name{color:var(--tut-text);}
+.cell-prof{font-size:.67rem;color:var(--muted);margin-top:1px;}
+.cell-badge{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;padding:2px 7px;border-radius:10px;display:inline-block;}
+.cell-theory .cell-badge{background:#dbeafe;color:var(--theory-text);}
+.cell-lab .cell-badge{background:#dcfce7;color:var(--lab-text);}
+.cell-tut .cell-badge{background:#ede9fe;color:var(--tut-text);}
+.lunch-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--lunch-text);}
+.lunch-time{font-size:.63rem;color:#9a3412;margin-top:3px;opacity:.75;}
+.empty-dash{color:#cbd5f0;font-size:1.2rem;text-align:center;width:100%;display:block;}
+.legend{display:flex;gap:14px;align-items:center;}
+.leg{display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--muted);font-weight:500;}
+.leg-dot{width:12px;height:12px;border-radius:3px;}
+.leg-th{background:var(--blue);}
+.leg-lab{background:#16a34a;}
+.leg-lunch{background:#ea580c;}
+.actions{display:flex;gap:10px;align-items:center;}
+.pdf-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:10px;font-size:.83rem;font-weight:700;text-decoration:none;background:#16a34a;color:#fff;transition:all .2s;}
+.pdf-btn:hover{background:#15803d;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text">EduScheduler</span>
+  </div>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/generate-smart/" class="btn-red">⚡ Regenerate</a>
+  </div>
+</nav>
+<main>
+  <div class="page-header">
+    <h1>
+      <span>{{ course.department.name }}</span> ·
+      {{ course.get_display_name }} ·
+      <span>{{ year_display }}</span> — All Groups
+    </h1>
+    <div class="actions">
+      <div class="legend">
+        <div class="leg"><div class="leg-dot leg-th"></div>Theory</div>
+        <div class="leg"><div class="leg-dot leg-lab"></div>Lab</div>
+        <div class="leg"><div class="leg-dot" style="background:#7c3aed;border-radius:3px;width:12px;height:12px;flex-shrink:0;"></div>Tutorial</div>
+      </div>
+      <a href="/year-timetable/{{ course.id }}/{{ year }}/pdf/" class="pdf-btn">⬇ Export PDF</a>
+    </div>
+  </div>
+  <div class="breadcrumb">
+    <a href="/">Dashboard</a> → {{ course.department.name }} → {{ course.get_display_name }} → {{ year_display }}
+  </div>
+
+  {% for item in section_tables %}
+  <div class="section-block">
+    <div class="section-label">
+      <h2>👥 <span class="grp">Sec {{ item.section.section_name }} — {{ item.section.get_group_display }}</span>
+        {% if item.section.room %} · 🏫 {{ item.section.room.name }}{% endif %}
+        {% if item.section.lab %} · 🧪 {{ item.section.lab.name }}{% endif %}
+      </h2>
+      <div class="room-chips">
+        {% if item.section.room %}
+          <span class="chip chip-room">🏫 {{ item.section.room.name }} (cap: {{ item.section.room.capacity }})</span>
+        {% endif %}
+        {% if item.section.lab %}
+          <span class="chip chip-lab">🧪 {{ item.section.lab.name }} (cap: {{ item.section.lab.capacity }})</span>
+        {% endif %}
+        <a href="/timetable/{{ item.section.id }}/pdf/" class="pdf-btn" style="font-size:.72rem;padding:5px 12px;">⬇ PDF</a>
+      </div>
+    </div>
+    <div class="tt-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>9:00<br>9:50</th>
+            <th>9:50<br>10:40</th>
+            <th>10:40<br>11:30</th>
+            <th>11:30<br>12:20</th>
+            <th>12:20<br>1:10</th>
+            <th>1:10<br>2:00</th>
+            <th>2:00<br>2:50</th>
+            <th>2:50<br>3:40</th>
+            <th>3:40<br>4:30</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for day, cells in item.table.items %}
+          <tr>
+            <td>{{ day }}</td>
+            {% for cell in cells %}
+              {% if not cell.skip %}
+                <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
+                  {% if cell.slot in lunch_slots %}
+                    <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
+                  {% elif cell.entry %}
+                    <div class="cell {% if cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                      {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}
+                      <div class="cell-name">{{ cell.entry.subject.name }}</div>
+                      <div class="cell-prof">{{ cell.entry.professor.name }}</div>
+                      {% if cell.entry.room %}<div style="font-size:.6rem;color:#6b7494;margin-top:2px;">🚪 {{ cell.entry.room.name }}</div>{% endif %}
+                      <span class="cell-badge">{% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tutorial{% else %}📘 Theory{% endif %}</span>
+                    </div>
+                  {% else %}
+                    <div class="cell cell-empty"><span class="empty-dash">—</span></div>
+                  {% endif %}
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</main>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if edit %}Edit{% else %}Add{% endif %} Room Occupied Time — {{ room.name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;
+  --red:#e02424;--text:#1c2333;--muted:#607d8b;--green:#16a34a;--green-light:#f0fdf4;--green-border:#bbf7d0;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:68px;
+  background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 24px;}
+.form-card{background:var(--card);border:2px solid var(--border);border-radius:20px;
+  padding:44px;width:100%;max-width:520px;box-shadow:0 4px 24px rgba(26,86,219,.08);
+  animation:pop .45s ease both;}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(14px)}to{opacity:1;transform:none}}
+.form-top{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:20px;border-bottom:2px solid var(--border);}
+.form-icon{width:48px;height:48px;background:var(--green-light);border:2px solid var(--green-border);
+  border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.form-top h1{font-family:'Roboto',sans-serif;font-size:1.4rem;font-weight:700;color:var(--text);}
+.form-top p{font-size:.82rem;color:var(--muted);margin-top:2px;}
+.warn-box{background:#fef3c7;border:1.5px solid #fde68a;border-radius:10px;
+  padding:12px 14px;font-size:.82rem;color:#92400e;margin-bottom:22px;line-height:1.5;}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--muted);margin-bottom:7px;}
+.field input,.field select{width:100%;padding:11px 14px;background:#f8faff;
+  border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:.9rem;
+  font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.field .help{font-size:.73rem;color:var(--muted);margin-top:4px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.error{color:var(--red);font-size:.78rem;margin-top:4px;}
+.buttons{display:flex;gap:12px;margin-top:24px;}
+.submit-btn{flex:1;padding:13px;background:var(--green);color:#fff;border:none;
+  border-radius:11px;font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;
+  cursor:pointer;transition:all .2s;}
+.submit-btn:hover{background:#15803d;box-shadow:0 4px 16px rgba(22,163,74,.3);}
+.cancel-btn{padding:13px 20px;background:#6b7280;color:#fff;border:none;
+  border-radius:11px;font-size:.9rem;font-weight:600;cursor:pointer;text-decoration:none;
+  display:inline-flex;align-items:center;transition:all .2s;}
+.cancel-btn:hover{background:#4b5563;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <a href="/room/{{ room.id }}/" class="back">← Back to {{ room.name }}</a>
+</nav>
+<main>
+  <div class="form-card">
+    <div class="form-top">
+      <div class="form-icon">🚧</div>
+      <div>
+        <h1>{% if edit %}Edit Room Block{% else %}Block Room / Lab Time{% endif %}</h1>
+        <p>{{ room.name }} — {{ room.get_room_type_display }}</p>
+      </div>
+    </div>
+    <div class="warn-box">
+      ⚠️ Slots marked here will be <strong>completely unavailable</strong> for timetable allocation.<br>
+      No class, lab, or tutorial will be assigned to this room during this time.
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="room" value="{{ room.id }}">
+      <div class="field">
+        <label>Room</label>
+        <input type="text" value="{{ room.name }}" readonly style="background:#f0f4ff;color:var(--blue);font-weight:700;">
+      </div>
+      <div class="field">
+        <label>Day</label>
+        {{ form.day }}
+        {% if form.day.errors %}<div class="error">{{ form.day.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>From (slot)</label>
+          {{ form.start_slot }}
+          {% if form.start_slot.errors %}<div class="error">{{ form.start_slot.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="field">
+          <label>To (slot, inclusive)</label>
+          {{ form.end_slot }}
+          {% if form.end_slot.errors %}<div class="error">{{ form.end_slot.errors.0 }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="field">
+        <label>Purpose</label>
+        {{ form.purpose }}
+        {% if form.purpose.errors %}<div class="error">{{ form.purpose.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label>Description <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+        {{ form.description }}
+        <div class="help">e.g. Departmental workshop, Annual exam duty, Server maintenance</div>
+        {% if form.description.errors %}<div class="error">{{ form.description.errors.0 }}</div>{% endif %}
+      </div>
+      {% if form.non_field_errors %}<div class="error" style="margin-bottom:12px;">{{ form.non_field_errors.0 }}</div>{% endif %}
+      <div class="buttons">
+        <button type="submit" class="submit-btn">{% if edit %}✅ Update Block{% else %}🚧 Block This Time{% endif %}</button>
+        <a href="/room/{{ room.id }}/" class="cancel-btn">✖ Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+</body>
+</html>

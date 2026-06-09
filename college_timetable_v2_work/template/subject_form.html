@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if edit %}Edit{% else %}Add{% endif %} Subject</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--card:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-light:#e3f0ff;
+  --red:#e02424;--text:#1c2333;--muted:#607d8b;
+  --green:#16a34a;--purple:#7c3aed;--amber:#d97706;}
+body{font-family:'Roboto',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.back{font-size:.82rem;color:rgba(255,255,255,.8);text-decoration:none;padding:8px 16px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.25);transition:all .2s;}
+.back:hover{background:rgba(255,255,255,.15);color:#fff;}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 24px;}
+.form-card{background:var(--card);border:2px solid var(--border);border-radius:20px;
+  padding:44px;width:100%;max-width:560px;box-shadow:0 4px 24px rgba(26,86,219,.08);
+  animation:pop .45s ease both;}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(14px)}to{opacity:1;transform:none}}
+.form-top{display:flex;align-items:center;gap:14px;margin-bottom:28px;
+  padding-bottom:20px;border-bottom:2px solid var(--border);}
+.form-icon{width:48px;height:48px;background:var(--blue-light);border:2px solid #bfdbfe;
+  border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.form-top h1{font-family:'Roboto',sans-serif;font-size:1.5rem;font-weight:700;color:var(--text);}
+.form-top p{font-size:.82rem;color:var(--muted);margin-top:2px;}
+.tip{display:flex;align-items:center;gap:8px;padding:11px 14px;background:#eff6ff;
+  border:1.5px solid #bfdbfe;border-radius:10px;font-size:.8rem;color:var(--muted);margin-bottom:24px;}
+.tip a{color:var(--blue);text-decoration:none;font-weight:600;}
+.tip a:hover{text-decoration:underline;}
+.field{margin-bottom:18px;}
+.field label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--muted);margin-bottom:7px;}
+.field input,.field select{width:100%;padding:11px 14px;background:#f8faff;
+  border:2px solid var(--border);border-radius:10px;color:var(--text);font-size:.9rem;
+  font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,.1);background:#fff;}
+.field input[readonly]{background:#f0f4ff;color:var(--blue);font-weight:700;cursor:not-allowed;}
+.field select[multiple]{height:100px;}
+.field .help{font-size:.73rem;color:var(--muted);margin-top:4px;}
+.duration-note{font-size:.75rem;color:var(--blue);margin-top:5px;font-weight:600;}
+.section-checkboxes{display:flex;flex-direction:column;gap:8px;padding:10px 14px;background:#f8faff;border:2px solid var(--border);border-radius:10px;max-height:200px;overflow-y:auto;}
+.section-checkboxes label{display:flex;align-items:center;gap:10px;font-size:.875rem;font-weight:500;color:var(--text);cursor:pointer;padding:5px 6px;border-radius:7px;transition:background .15s;}
+.section-checkboxes label:hover{background:var(--blue-light);}
+.section-checkboxes input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;flex-shrink:0;}
+.section-group-header{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:4px 6px 2px;border-bottom:1px solid var(--border);margin-top:4px;}
+.section-group-header:first-child{margin-top:0;}
+.select-all-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:8px;border-bottom:2px dashed var(--border);}
+.select-all-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;}
+.select-all-row label{font-size:.78rem;font-weight:700;color:var(--blue);cursor:pointer;}
+.lab-room-row{background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;
+  padding:12px 14px;margin-bottom:18px;display:none;}
+.lab-room-row.visible{display:block;}
+.lab-room-row label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:#15803d;margin-bottom:6px;display:block;}
+.lab-room-row select{width:100%;padding:10px 13px;background:#fff;border:2px solid #bbf7d0;
+  border-radius:8px;font-size:.9rem;color:var(--text);}
+.lab-room-row .help{font-size:.73rem;color:#166534;margin-top:5px;}
+.nptel-note{background:#fef3c7;border:1.5px solid #fde68a;border-radius:10px;
+  padding:11px 14px;font-size:.8rem;color:#92400e;margin-bottom:18px;display:none;}
+.nptel-note.visible{display:block;}
+.buttons{display:flex;gap:12px;margin-top:24px;}
+.submit-btn{flex:1;padding:13px;background:var(--blue);color:#fff;border:none;
+  border-radius:11px;font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;
+  cursor:pointer;transition:all .2s;}
+.submit-btn:hover{background:#1648c0;box-shadow:0 4px 16px rgba(26,86,219,.35);}
+.cancel-btn{padding:13px 20px;background:var(--red);color:#fff;border:none;
+  border-radius:11px;font-family:'Roboto',sans-serif;font-size:.9rem;font-weight:600;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:all .2s;}
+.cancel-btn:hover{background:#c81e1e;}
+</style>
+<script>
+function toggleAllSections(master) {
+  var boxes = document.querySelectorAll('#sections-box input[type=checkbox]:not(#select-all-sections)');
+  boxes.forEach(function(cb) { cb.checked = master.checked; });
+}
+function setDuration(type) {
+  var d = document.getElementById('id_duration');
+  var note = document.getElementById('duration-note');
+  var labRoom = document.getElementById('lab-room-row');
+  var nptelNote = document.getElementById('nptel-note');
+  labRoom.classList.remove('visible');
+  nptelNote.classList.remove('visible');
+  if (type === 'LAB') {
+    d.value = 100;
+    note.textContent = '🧪 Lab selected — 100 min (2 consecutive slots), scheduled per group';
+    note.style.color = '#15803d';
+    labRoom.classList.add('visible');
+  } else if (type === 'TUTORIAL') {
+    d.value = 50;
+    note.textContent = '📝 Tutorial selected — 50 min (1 slot), scheduled per group';
+    note.style.color = '#7c3aed';
+  } else if (type === 'NPTEL') {
+    d.value = 50;
+    note.textContent = '📡 NPTEL selected — 50 min, scheduled ONLY after 2:00 PM (slots 6–7)';
+    note.style.color = '#b45309';
+    nptelNote.classList.add('visible');
+  } else {
+    d.value = 50;
+    note.textContent = '📘 Theory selected — 50 min (1 slot), shared across all groups in a section';
+    note.style.color = '#1a56db';
+  }
+}
+window.onload = function() {
+  var sel = document.getElementById('id_subject_type');
+  if (sel) setDuration(sel.value);
+}
+</script>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <a href="/" class="back">← Back to Dashboard</a>
+</nav>
+<main>
+  <div class="form-card">
+    <div class="form-top">
+      <div class="form-icon">📖</div>
+      <div>
+        <h1>{% if edit %}Edit Subject{% else %}Add Subject{% endif %}</h1>
+        <p>{% if edit %}Update subject details below.{% else %}Fill in details to add a new subject.{% endif %}</p>
+      </div>
+    </div>
+    <div class="tip">
+      💡 Need a new professor? <a href="/add-professor/" target="_blank">+ Add Professor</a> (opens in new tab)
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+        {% if field.name == 'lab_room' or field.name == 'section' %}
+          {# rendered conditionally or replaced by sections checkboxes #}
+        {% elif field.name == 'sections' %}
+        <div class="field">
+          <label>{{ field.label }}</label>
+          <div class="section-checkboxes" id="sections-box">
+            <div class="select-all-row">
+              <input type="checkbox" id="select-all-sections" onchange="toggleAllSections(this)">
+              <label for="select-all-sections">Select All</label>
+            </div>
+            {% for choice in field %}
+            <label>
+              {{ choice.tag }}
+              {{ choice.choice_label }}
+            </label>
+            {% endfor %}
+          </div>
+          {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+          {% if field.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ field.errors.0 }}</div>{% endif %}
+        </div>
+        {% elif field.name == 'duration' %}
+        <div class="field">
+          <label>{{ field.label }}</label>
+          {{ field }}
+          <div class="duration-note" id="duration-note">Duration is set automatically based on subject type.</div>
+        </div>
+        {% else %}
+        <div class="field">
+          <label>{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+          {% if field.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ field.errors.0 }}</div>{% endif %}
+        </div>
+        {% endif %}
+        {% if field.name == 'subject_type' %}
+        <div class="nptel-note" id="nptel-note">
+          📡 <strong>NPTEL Constraint Enforced:</strong> This subject will be automatically scheduled
+          only in the <strong>2:00 PM – 3:40 PM</strong> time range (slots 6–7).
+        </div>
+        <div class="lab-room-row" id="lab-room-row">
+          <label>🔗 Pin to Lab Room <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+          {{ form.lab_room }}
+          <div class="help">
+            Lock this lab to a specific room — e.g. Python Lab → Lab 1, DBMS Lab → Lab 2.
+            Leave blank for auto-assignment.
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+
+      <!-- New fields: Group & Specialization -->
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:.8rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+          👥 Allowed Groups
+        </label>
+        {{ form.allowed_groups }}
+        <div style="font-size:.73rem;color:#6b7280;margin-top:5px;">
+          Theory → Both Groups (full class). Lab/Tutorial → G1 or G2 (split groups).
+        </div>
+      </div>
+      <div style="margin-bottom:18px;display:flex;align-items:flex-start;gap:12px;background:#fafbfd;border:2px solid #e0e3ea;border-radius:10px;padding:14px 16px;">
+        <div style="margin-top:2px;">{{ form.specialization_required }}</div>
+        <div>
+          <label for="{{ form.specialization_required.id_for_label }}" style="font-size:.85rem;font-weight:700;color:#374151;cursor:pointer;">
+            🎓 Requires Specialization
+          </label>
+          <div style="font-size:.73rem;color:#6b7280;margin-top:3px;">
+            If checked, only professors with matching specialization_subjects will be eligible to teach this subject.
+          </div>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button type="submit" name="save_subject" class="submit-btn">{% if edit %}✅ Update Subject{% else %}✅ Save Subject{% endif %}</button>
+        <a href="/" class="cancel-btn">✖ Cancel</a>
+      </div>
+    </form>
+  </div>
+</main>
+</body>
+</html>

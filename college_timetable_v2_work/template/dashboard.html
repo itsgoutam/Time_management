@@ -1,0 +1,452 @@
+{% load dict_filters %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduScheduler — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f5f7;--surface:#fff;--card:#fff;--border:#e0e3ea;
+  --blue:#1565c0;--blue-light:#e3f0ff;--blue-mid:#1e88e5;
+  --red:#d32f2f;--red-mid:#ef5350;--red-light:#ffebee;
+  --green:#16a34a;--amber:#d97706;--purple:#7c3aed;--purple-light:#f3e8ff;
+  --text:#1c2333;--muted:#607d8b;--white:#fff;
+}
+body{font-family:'Roboto',sans-serif;font-size:15px;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+nav{display:flex;align-items:center;justify-content:space-between;padding:0 40px;
+  height:60px;background:var(--blue);box-shadow:0 3px 14px rgba(21,101,192,.3);}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand img{height:46px;width:auto;border-radius:6px;background:#fff;padding:2px;}
+.brand-text{font-family:'Roboto',sans-serif;font-weight:700;font-size:1.15rem;color:#fff;}
+.nav-links{display:flex;gap:8px;flex-wrap:wrap;}
+.nav-links a{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.85);text-decoration:none;
+  padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.2);transition:all .2s;}
+.nav-links a:hover{background:rgba(255,255,255,.15);color:#fff;}
+.btn-white{background:#fff!important;color:var(--blue)!important;border-color:#fff!important;font-weight:700!important;}
+.btn-red{background:var(--red)!important;color:#fff!important;border-color:var(--red)!important;font-weight:600!important;}
+.btn-red:hover{background:#c81e1e!important;}
+.btn-combine{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;font-weight:700!important;letter-spacing:.02em;}
+.btn-combine:hover{background:#15803d!important;border-color:#15803d!important;}
+main{padding:36px 40px;}
+.page-strip{background:linear-gradient(135deg,var(--blue) 0%,var(--blue-mid) 100%);
+  border-radius:8px;padding:28px 36px;margin-bottom:28px;
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 4px 20px rgba(21,101,192,.2);}
+.page-strip h1{font-family:'Roboto',sans-serif;font-size:1.7rem;font-weight:700;color:#fff;}
+.page-strip p{color:rgba(255,255,255,.75);font-size:.88rem;margin-top:4px;}
+.strip-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.strip-btn{padding:9px 18px;border-radius:10px;font-size:.83rem;font-weight:600;
+  text-decoration:none;transition:all .2s;border:none;cursor:pointer;}
+.strip-btn-white{background:#fff;color:var(--red);}
+.strip-btn-white:hover{background:#e8effe;}
+.layout{display:grid;grid-template-columns:320px 1fr;gap:24px;}
+
+/* Tree sidebar */
+.tree-panel{background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;height:fit-content;position:sticky;top:20px;}
+.tree-header{padding:14px 18px;background:var(--blue);display:flex;align-items:center;justify-content:space-between;}
+.tree-header span{font-family:'Roboto',sans-serif;font-weight:700;font-size:.95rem;color:#fff;}
+.tree-body{padding:10px 0;}
+.tree-dept{margin-bottom:2px;}
+.tree-dept-row{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px 16px;}
+.tree-dept-label{display:flex;align-items:center;gap:6px;font-family:'Roboto',sans-serif;font-weight:700;font-size:.85rem;color:var(--text);cursor:pointer;user-select:none;flex:1;}
+.tree-dept-label:hover{color:var(--red);}
+.tree-dept-label .arrow{font-size:.65rem;color:var(--muted);transition:transform .2s;}
+.tree-dept-label.open .arrow{transform:rotate(90deg);}
+.tree-actions{display:flex;gap:4px;opacity:0;transition:opacity .15s;}
+.tree-dept-row:hover .tree-actions{opacity:1;}
+.tree-course-row:hover .tree-actions{opacity:1;}
+.tree-act-btn{font-size:.65rem;padding:3px 7px;border-radius:5px;text-decoration:none;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.tree-act-edit{background:#e8effe;color:var(--blue);}
+.tree-act-edit:hover{background:#dbeafe;}
+.tree-act-del{background:#fef2f2;color:var(--red);}
+.tree-act-del:hover{background:#fee2e2;}
+.tree-act-pdf{background:#f3e8ff;color:var(--purple);font-size:.6rem;}
+.tree-act-pdf:hover{background:#ede9fe;}
+.tree-act-view{background:#ecfdf5;color:var(--green);font-size:.6rem;}
+.tree-act-view:hover{background:#d1fae5;}
+.tree-course{padding-left:24px;}
+.tree-course-row{display:flex;align-items:center;justify-content:space-between;padding:5px 12px 5px 8px;border-radius:6px;}
+.tree-course-row:hover{background:#f5f8ff;}
+.tree-course-label{display:flex;align-items:center;gap:6px;font-weight:700;font-size:.8rem;color:var(--blue);cursor:pointer;user-select:none;flex:1;}
+.tree-course-label .arrow{font-size:.6rem;color:var(--muted);transition:transform .2s;}
+.tree-course-label.open .arrow{transform:rotate(90deg);}
+.tree-year{padding-left:24px;margin-bottom:2px;}
+.tree-year-row{display:flex;align-items:center;gap:4px;padding:5px 8px;border-radius:6px;transition:background .15s;}
+.tree-year-row:hover{background:#f0f4ff;}
+.tree-year-label{display:flex;align-items:center;gap:6px;font-weight:600;font-size:.78rem;color:var(--text);cursor:pointer;flex:1;}
+.tree-year-label .arrow{font-size:.58rem;color:var(--muted);transition:transform .2s;}
+.tree-year-label.open .arrow{transform:rotate(90deg);}
+.tree-year-actions{display:flex;gap:3px;opacity:0;transition:opacity .15s;}
+.tree-year-row:hover .tree-year-actions{opacity:1;}
+.tree-year-tt{font-size:.62rem;padding:2px 7px;border-radius:5px;background:#eff6ff;color:var(--blue);text-decoration:none;font-weight:700;}
+/* Section level */
+.tree-section-wrap{padding-left:18px;}
+.tree-section-row{display:flex;align-items:center;gap:4px;padding:5px 8px;cursor:pointer;border-radius:6px;transition:background .15s;}
+.tree-section-row:hover{background:#f0f4ff;}
+.tree-section-label{display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:700;color:var(--text);flex:1;}
+.tree-section-actions{display:flex;gap:3px;opacity:0;transition:opacity .15s;}
+.tree-section-row:hover .tree-section-actions{opacity:1;}
+/* Group level */
+.tree-groups{padding-left:14px;}
+.tree-group-link{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:.75rem;font-weight:500;color:var(--muted);text-decoration:none;border-radius:6px;transition:all .2s;}
+.tree-group-link:hover{background:#eff6ff;color:var(--blue);font-weight:600;}
+.tree-group-link .dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;}
+.tree-group-link:hover .dot{background:var(--blue);}
+.tree-hidden{display:none;}
+
+/* Rooms section in sidebar */
+.rooms-section{border-top:2px solid var(--border);padding:12px 0 4px;}
+.rooms-header{padding:6px 18px;font-family:'Roboto',sans-serif;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;justify-content:space-between;}
+.rooms-header a{font-size:.68rem;padding:3px 8px;background:var(--blue-light);color:var(--blue);border-radius:6px;text-decoration:none;font-weight:700;}
+.room-link{display:flex;align-items:center;gap:8px;padding:6px 18px;font-size:.78rem;color:var(--text);text-decoration:none;transition:background .15s;border-radius:0;}
+.room-link:hover{background:#f0f4ff;}
+.room-icon{font-size:.85rem;}
+.room-info{flex:1;}
+.room-name{font-weight:700;font-size:.78rem;}
+.room-cap{font-size:.67rem;color:var(--muted);}
+.room-badge{font-size:.6rem;padding:2px 6px;border-radius:8px;font-weight:700;}
+.badge-classroom{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
+.badge-lab-r{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+.dept-badge{background:#f3e8ff;color:#7c3aed;border:1px solid #ddd6fe;font-size:.57rem;padding:1px 5px;border-radius:6px;font-weight:700;margin-left:3px;}
+.room-edit-actions{display:flex;gap:3px;opacity:0;transition:opacity .15s;}
+.room-row:hover .room-edit-actions{opacity:1;}
+.room-row{display:flex;align-items:center;padding:0 10px 0 0;}
+
+/* Right panel */
+.right-panel{}
+.section-card{background:var(--card);border:2px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;}
+.section-card-header{padding:16px 24px;border-bottom:2px solid var(--border);background:#f8faff;display:flex;align-items:center;justify-content:space-between;}
+.section-card-header h2{font-family:'Roboto',sans-serif;font-size:.95rem;font-weight:700;color:var(--red);}
+.add-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;font-size:.8rem;font-weight:700;color:#fff;background:var(--red);text-decoration:none;transition:all .2s;}
+.add-btn:hover{background:var(--red-mid);}
+.prof-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:16px;}
+.prof-card-wrap{position:relative;}
+.prof-card{background:#f8faff;border:2px solid var(--border);border-radius:6px;padding:14px 16px;text-decoration:none;transition:all .2s;display:flex;align-items:center;gap:10px;}
+.prof-card:hover{border-color:var(--blue);background:#eff6ff;transform:translateY(-2px);box-shadow:0 4px 14px rgba(26,86,219,.1);}
+.prof-avatar{width:36px;height:36px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;}
+.prof-name{font-size:.82rem;font-weight:700;color:var(--text);}
+.prof-email{font-size:.72rem;color:var(--blue);margin-top:3px;font-weight:600;word-break:break-all;}
+.prof-mini-actions{display:flex;gap:4px;margin-top:6px;}
+.pmini-btn{font-size:.65rem;padding:3px 8px;border-radius:5px;text-decoration:none;font-weight:700;border:none;cursor:pointer;}
+.pmini-edit{background:#e8effe;color:var(--red);}
+.pmini-del{background:#fef2f2;color:var(--red);}
+table{width:100%;border-collapse:collapse;}
+thead th{padding:11px 20px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:left;background:#f8faff;border-bottom:2px solid var(--border);}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:#f0f4ff;}
+tbody td{padding:12px 20px;font-size:.85rem;}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;}
+.badge-th{background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;}
+.badge-lab{background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;}
+.badge-tut{background:#fdf4ff;color:#7c3aed;border:1.5px solid #e9d5ff;}
+.edit-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:7px;font-size:.76rem;font-weight:600;color:var(--blue);background:var(--blue-light);border:1.5px solid #bfdbfe;text-decoration:none;transition:all .2s;}
+.edit-btn:hover{background:#dbeafe;}
+.del-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:7px;font-size:.76rem;font-weight:600;color:var(--red);background:#fef2f2;border:1.5px solid #fecaca;text-decoration:none;transition:all .2s;margin-left:4px;}
+.del-btn:hover{background:#fee2e2;}
+.empty{text-align:center;padding:48px 24px;color:var(--muted);}
+.empty .icon{font-size:2.5rem;margin-bottom:12px;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.anim{animation:fadeUp .4s ease both;}
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand">
+    <img src="/static/agclogo.jpg" alt="AGC Logo">
+    <span class="brand-text"></span>
+  </div>
+  <div class="nav-links">
+    <a href="/add-department/">+ Dept</a>
+    <a href="/add-course/">+ Course</a>
+    <a href="/add-section/">+ Group</a>
+    <a href="/add-room/">+ Room/Lab</a>
+    <a href="/add-professor/">+ Professor</a>
+    <a href="/csv-upload/" style="background:rgba(124,58,237,.25);color:#fff;border-color:rgba(124,58,237,.4);">📂 CSV Import</a>
+    <a href="/add-subject/" class="btn-white">+ Subject</a>
+    
+    <a href="/free-rooms/" style="background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;font-weight:700!important;">🟢 Free Rooms</a>
+    <a href="/free-students/">🎓 Free Students</a>
+    <a href="/generate-smart/" class="btn-red">⚡ Smart Generate</a>
+  </div>
+</nav>
+<main>
+  {% if messages %}
+  <div style="margin-bottom:16px;">
+    {% for message in messages %}
+    <div style="padding:12px 20px;border-radius:10px;margin-bottom:8px;font-size:.88rem;font-weight:600;
+      {% if message.tags == 'error' %}background:#fef2f2;border:2px solid #fecaca;color:#dc2626;
+      {% elif message.tags == 'warning' %}background:#fffbeb;border:2px solid #fde68a;color:#d97706;
+      {% else %}background:#f0fdf4;border:2px solid #bbf7d0;color:#16a34a;{% endif %}">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="page-strip anim">
+    <div>
+      <h1>College Timetable Manager</h1>
+      <p>Manage departments, rooms, sections, subjects &amp; professors — then generate timetables.</p>
+    </div>
+    <div class="strip-actions">
+      <a href="/add-subject/" class="strip-btn strip-btn-white">+ Add Subject</a>
+      <a href="/csv-upload/" class="strip-btn" style="background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.4);">📂 CSV Import</a>
+      <a href="/workload-report/" class="strip-btn" style="background:#7c3aed;color:#fff;border:none;">📋 Workload</a>
+      <a href="/generate-smart/" class="strip-btn strip-btn-white" style="background:var(--red);color:#fff;">⚡ Smart Generate</a>
+    </div>
+  </div>
+
+  <div class="layout anim">
+    <!-- Tree Sidebar -->
+    <div class="tree-panel">
+      <div class="tree-header">
+        <span>🏫 Structure</span>
+        <a href="/add-department/" style="font-size:.72rem;padding:4px 10px;background:rgba(255,255,255,.2);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">+ Dept</a>
+      </div>
+      <div class="tree-body">
+        {% for dept in departments %}
+        <div class="tree-dept">
+          <div class="tree-dept-row">
+            <div class="tree-dept-label" onclick="toggle(this)">
+              <span class="arrow">▶</span> {{ dept.name }}
+            </div>
+            <div class="tree-actions">
+              <a href="/department/{{ dept.id }}/settings/" class="tree-act-btn" title="Department Settings" style="background:#f0fdf4;color:#16a34a;">⚙️</a>
+              <a href="/department/{{ dept.id }}/pdf/" class="tree-act-btn tree-act-pdf" title="Export Dept PDF">📄</a>
+              <a href="/edit-department/{{ dept.id }}/" class="tree-act-btn tree-act-edit">✏️</a>
+              <a href="/delete-department/{{ dept.id }}/" class="tree-act-btn tree-act-del">🗑</a>
+            </div>
+          </div>
+          <div class="tree-hidden">
+            {% for course in dept.courses.all %}
+            <div class="tree-course">
+              <div class="tree-course-row">
+                <div class="tree-course-label" onclick="toggle(this)">
+                  <span class="arrow">▶</span> {{ course.get_display_name }}
+                </div>
+                <div class="tree-actions">
+                  <a href="/edit-course/{{ course.id }}/" class="tree-act-btn tree-act-edit">✏️</a>
+                  <a href="/delete-course/{{ course.id }}/" class="tree-act-btn tree-act-del">🗑</a>
+                </div>
+              </div>
+              <div class="tree-hidden">
+                {% regroup course.sections.all by year as year_list %}
+                {% for year_group in year_list %}
+                <div class="tree-year">
+                  <div class="tree-year-row">
+                    <div class="tree-year-label" onclick="toggleByLabel(this)">
+                      <span class="arrow">▶</span>
+                      {{ year_group.list.0.get_year_display_label }}
+                    </div>
+                    <div class="tree-year-actions">
+                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/" class="tree-act-btn tree-act-view" title="View Year Timetable">👁</a>
+                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/pdf/" class="tree-act-btn tree-act-pdf" title="Export Year PDF">📄</a>
+                    </div>
+                  </div>
+                  <!-- Section level -->
+                  <div class="tree-hidden">
+                    {% regroup year_group.list by section_name as section_list %}
+                    {% for sec_group in section_list %}
+                    <div class="tree-section-wrap">
+                      <div class="tree-section-row">
+                        <div class="tree-section-label" style="display:flex;align-items:center;gap:5px;flex:1;">
+                          <!-- Arrow toggles the Groups sub-list -->
+                          <span class="sec-arrow" onclick="toggleSection(this.closest('.tree-section-row'))"
+                            style="font-size:.6rem;color:var(--muted);transition:transform .2s;display:inline-block;cursor:pointer;padding:2px 4px;border-radius:4px;flex-shrink:0;">▶</span>
+                          <!-- Label navigates to combined timetable -->
+                          <a href="/section-timetable/{{ course.id }}/{{ year_group.grouper }}/{{ sec_group.grouper }}/"
+                             style="display:flex;align-items:center;gap:5px;text-decoration:none;color:inherit;flex:1;"
+                             title="View combined G1 + G2 timetable">
+                            📂 Section {{ sec_group.list.0.get_effective_section_name }}
+                            <span style="font-size:.62rem;color:var(--muted);background:#f0f4ff;border-radius:8px;padding:1px 6px;">{{ sec_group.list|length }}g</span>
+                          </a>
+                        </div>
+                        <div class="tree-section-actions">
+                          <a href="/section-timetable/{{ course.id }}/{{ year_group.grouper }}/{{ sec_group.grouper }}/" class="tree-act-btn tree-act-view" title="View Combined Timetable">👁</a>
+                          <a href="/section-timetable/{{ course.id }}/{{ year_group.grouper }}/{{ sec_group.grouper }}/pdf/" class="tree-act-btn tree-act-pdf" title="Export Section PDF">📄</a>
+                        </div>
+                      </div>
+                      <!-- Group level (G1, G2) -->
+                      <div class="tree-hidden tree-groups">
+                        {% for section in sec_group.list %}
+                        <div style="display:flex;align-items:center;gap:4px;padding:2px 0;">
+                          <a href="/timetable/{{ section.id }}/" class="tree-group-link" style="flex:1;">
+                            <span class="dot"></span>
+                            {{ section.get_group_display }}
+                          </a>
+                          <a href="/timetable/{{ section.id }}/pdf/" style="font-size:.6rem;padding:2px 5px;background:#f3e8ff;color:var(--purple);border-radius:4px;text-decoration:none;font-weight:700;opacity:.8;" title="Export PDF">📄</a>
+                          <a href="/edit-section/{{ section.id }}/" style="font-size:.6rem;padding:2px 5px;background:#e8effe;color:var(--blue);border-radius:4px;text-decoration:none;font-weight:700;opacity:.7;">✏️</a>
+                          <a href="/delete-section/{{ section.id }}/" style="font-size:.6rem;padding:2px 5px;background:#fef2f2;color:var(--red);border-radius:4px;text-decoration:none;font-weight:700;opacity:.7;">🗑</a>
+                        </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% empty %}
+            <div style="padding:6px 28px;font-size:.75rem;color:var(--muted);">No courses yet</div>
+            {% endfor %}
+          </div>
+        </div>
+        {% empty %}
+        <div style="padding:16px 20px;font-size:.82rem;color:var(--muted);">
+          No departments yet. <a href="/add-department/" style="color:var(--blue);font-weight:600;">Add one →</a>
+        </div>
+        {% endfor %}
+
+        <!-- Rooms Section -->
+        <div class="rooms-section">
+          <div class="rooms-header">
+            🚪 Rooms &amp; Labs
+            <div style="display:flex;gap:5px;align-items:center;">
+              <a href="/free-rooms/" style="background:#ecfdf5;color:#16a34a;border:1.5px solid #bbf7d0;font-size:.65rem;padding:3px 8px;border-radius:6px;text-decoration:none;font-weight:700;" title="View Free Rooms &amp; Labs">🟢 Free</a>
+              <a href="/add-room/">+ Add</a>
+            </div>
+          </div>
+          {% for room in rooms %}
+          <div class="room-row">
+            <a href="/room/{{ room.id }}/" class="room-link" style="flex:1;">
+              <span class="room-icon">{% if room.room_type == 'LAB' %}🧪{% else %}🏫{% endif %}</span>
+              <div class="room-info">
+                <div class="room-name">{{ room.name }}{% if room.department %}<span class="dept-badge">{{ room.department.name }}</span>{% endif %}</div>
+                <div class="room-cap">cap: {{ room.capacity }} · <span class="room-badge {% if room.room_type == 'LAB' %}badge-lab-r{% else %}badge-classroom{% endif %}">{{ room.get_room_type_display }}</span></div>
+              </div>
+            </a>
+            <div class="room-edit-actions" style="display:flex;gap:3px;margin-right:10px;">
+              <a href="/room/{{ room.id }}/pdf/" class="tree-act-btn tree-act-pdf" title="Room PDF">📄</a>
+              <a href="/edit-room/{{ room.id }}/" class="tree-act-btn tree-act-edit">✏️</a>
+              <a href="/delete-room/{{ room.id }}/" class="tree-act-btn tree-act-del">🗑</a>
+            </div>
+          </div>
+          {% empty %}
+          <div style="padding:8px 18px;font-size:.75rem;color:var(--muted);">No rooms yet. <a href="/add-room/" style="color:var(--blue);font-weight:600;">Add →</a></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <!-- Professors -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <h2>👨‍🏫 Professors</h2>
+          <a href="/add-professor/" class="add-btn">+ Add Professor</a>
+        </div>
+        {% if professors %}
+        <div class="prof-grid">
+          {% for p in professors %}
+          <div class="prof-card-wrap">
+            <a href="/professor/{{ p.id }}/" class="prof-card">
+              <div class="prof-avatar">👤</div>
+              <div style="flex:1;">
+                <div class="prof-name">{{ p.name }}{% with occ_count=p.occupied_times.count %}{% if occ_count %}<span style="font-size:.6rem;background:#fee2e2;color:#dc2626;border-radius:6px;padding:1px 6px;margin-left:5px;font-weight:700;">🚫 {{ occ_count }} blocked</span>{% endif %}{% endwith %}</div>
+                <div class="prof-email">{% if p.email %}✉️ {{ p.email }}{% else %}<span style="color:var(--muted);font-weight:400;font-size:.68rem;">No email</span>{% endif %}</div>
+                <div class="prof-mini-actions">
+                  <a href="/edit-professor/{{ p.id }}/" class="pmini-btn pmini-edit" onclick="event.stopPropagation()">✏️ Edit</a>
+                  <a href="/professor/{{ p.id }}/pdf/" class="pmini-btn" style="background:#f3e8ff;color:var(--purple);" onclick="event.stopPropagation()">📄 PDF</a>
+                  <a href="/professor/{{ p.id }}/csv/" class="pmini-btn" style="background:#ecfdf5;color:#16a34a;font-size:.65rem;" onclick="event.stopPropagation()">⬇️ CSV</a>
+                  <a href="/delete-professor/{{ p.id }}/" class="pmini-btn pmini-del" onclick="event.stopPropagation()">🗑</a>
+                </div>
+              </div>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty"><div class="icon">👨‍🏫</div><p>No professors yet.</p></div>
+        {% endif %}
+      </div>
+
+      <!-- Subjects -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <h2>📚 All Subjects</h2>
+          <a href="/add-subject/" class="add-btn">+ Add Subject</a>
+        </div>
+        {% if subjects %}
+        <table>
+          <thead>
+            <tr><th>#</th><th>Subject</th><th>Section</th><th>Type</th><th>Professor(s)</th><th>Pinned Room</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for s in subjects %}
+            <tr>
+              <td style="color:var(--muted);font-weight:600;">{{ forloop.counter }}</td>
+              <td><strong>{{ s.name }}</strong>{% if s.specialization_required %}<span style="margin-left:5px;font-size:.6rem;background:#fef3c7;color:#b45309;border:1.5px solid #fde68a;border-radius:5px;padding:1px 5px;font-weight:700;">🎓 SPEC</span>{% endif %}</td>
+              <td style="font-size:.78rem;color:var(--muted);">{{ s.section|default:"—" }}</td>
+              <td>
+                {% if s.subject_type == "LAB" %}<span class="badge badge-lab">🧪 Lab</span>
+                {% elif s.subject_type == "TUTORIAL" %}<span class="badge badge-tut">📝 Tutorial</span>
+                {% elif s.subject_type == "NPTEL" %}<span class="badge" style="background:#fef3c7;color:#b45309;border:1.5px solid #fde68a;">📡 NPTEL</span>
+                {% else %}<span class="badge badge-th">📘 Theory</span>{% endif %}
+              </td>
+              <td>
+                {% for prof in s.professors.all %}
+                  <span style="display:inline-flex;align-items:center;gap:4px;background:#f0f4ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:3px 9px;font-size:.72rem;font-weight:700;color:var(--blue);margin:2px 2px 2px 0;">
+                    👤 {{ prof.name }}
+                  </span>
+                {% empty %}
+                  <span style="color:var(--muted);font-size:.78rem;">—</span>
+                {% endfor %}
+              </td>
+              <td style="font-size:.72rem;color:var(--muted);">{% if s.lab_room %}<span style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:6px;padding:2px 7px;color:#15803d;font-weight:700;">🔗 {{ s.lab_room.name }}</span>{% else %}—{% endif %}</td>
+              <td>
+                <a href="/edit-subject/{{ s.id }}/" class="edit-btn">✏️ Edit</a>
+                <a href="/delete-subject/{{ s.id }}/" class="del-btn">🗑</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty"><div class="icon">📚</div><p>No subjects yet. <a href="/add-subject/" style="color:var(--blue);font-weight:600;">Add one →</a></p></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+function toggle(el) {
+  el.classList.toggle('open');
+  var next;
+  if (el.classList.contains('tree-dept-label')) {
+    next = el.closest('.tree-dept-row').nextElementSibling;
+  } else if (el.classList.contains('tree-course-label')) {
+    next = el.closest('.tree-course-row').nextElementSibling;
+  } else {
+    next = el.nextElementSibling;
+  }
+  if (next) next.classList.toggle('tree-hidden');
+}
+
+function toggleByLabel(el) {
+  el.classList.toggle('open');
+  var arrow = el.querySelector('.arrow');
+  if (arrow) arrow.style.transform = el.classList.contains('open') ? 'rotate(90deg)' : '';
+  var row = el.closest('.tree-year-row');
+  if (row) {
+    var next = row.closest('.tree-year').querySelector('.tree-hidden');
+    if (next) next.classList.toggle('tree-hidden');
+  }
+}
+
+function toggleSection(row) {
+  var arrow = row.querySelector('.sec-arrow');
+  if (arrow) {
+    var isOpen = arrow.style.transform === 'rotate(90deg)';
+    arrow.style.transform = isOpen ? '' : 'rotate(90deg)';
+  }
+  var next = row.nextElementSibling;
+  if (next) next.classList.toggle('tree-hidden');
+}
+</script>
+</body>
+</html>
