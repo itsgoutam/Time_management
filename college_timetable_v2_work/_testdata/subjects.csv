@@ -1,0 +1,18 @@
+Department_name,Subject_id,Subject_Name,Sub_type,Theory_per_week,Tutorial_per_week,Lab_per_week,Allowed_groups,Course,Program Name,Semester
+Computer Science & Engineering,AGCS-21301,DBMS,REGULAR,3,1,1,G1,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-21302,Machine Learning,REGULAR,3,0,0,G1 G2,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-21303,Python,NPTEL,0,1,0,G1 G2 G3,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-21304,OS,ELECTIVE,3,1,1,G1 G2 G3,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-21305,Data Structures,REGULAR,3,1,1,G2,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-21306,Computer Networks,REGULAR,3,0,0,G1 G2,B.TECH,Computer Science & Engineering,3rd
+Computer Science & Engineering,AGCS-31501,Compiler Design,REGULAR,3,1,0,G1,B.TECH,Computer Science & Engineering,5th
+Computer Science & Engineering,AGCS-31502,Artificial Intelligence,REGULAR,3,0,0,G1 G2,B.TECH,Computer Science & Engineering,5th
+Computer Science & Engineering,AGCS-31503,Software Engineering,REGULAR,3,1,0,G1 G2,B.TECH,Computer Science & Engineering,5th
+Computer Science & Engineering,AGCS-31504,Web Technologies,ELECTIVE,2,0,2,G1 G2,B.TECH,Computer Science & Engineering,5th
+Electronics & Communication Engineering,AGEC-21301,Signals & Systems,REGULAR,3,1,0,G1 G2,B.TECH,Electronics & Communication Engineering,3rd
+Electronics & Communication Engineering,AGEC-21302,Digital Electronics,REGULAR,3,0,1,G1 G2,B.TECH,Electronics & Communication Engineering,3rd
+Electronics & Communication Engineering,AGEC-21303,Electromagnetic Fields,REGULAR,3,1,0,G1,B.TECH,Electronics & Communication Engineering,3rd
+Electrical Engineering,AGEE-21301,Power Systems,REGULAR,3,1,1,G1,B.TECH,Electrical Engineering,3rd
+Electrical Engineering,AGEE-21302,Control Systems,REGULAR,3,1,0,G1 G2,B.TECH,Electrical Engineering,3rd
+Mechanical Engineering,AGME-21301,Thermodynamics,REGULAR,3,1,0,G1,B.TECH,Mechanical Engineering,3rd
+Mechanical Engineering,AGME-21302,Fluid Mechanics,REGULAR,3,1,1,G1,B.TECH,Mechanical Engineering,3rd

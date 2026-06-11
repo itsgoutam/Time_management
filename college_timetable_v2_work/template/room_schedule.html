@@ -47,6 +47,9 @@ tbody tr:last-child td{border-bottom:none;}
 .cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
 .cell-lab{background:var(--lab-bg);border:1.5px solid var(--lab-border);}
 .cell-tut{background:var(--tut-bg);border:1.5px solid var(--tut-border);}
+.cell-elec{background:#fff3e6;border:1.5px dashed #fb923c;}
+.cell-elec .cell-name{color:#c2410c;}
+.cell-elec .cell-badge{background:#ffedd5;color:#c2410c;}
 .cell-empty{background:#fafbff;border:1.5px solid #eef2ff;}
 .cell-lunch{background:var(--lunch-bg);border:1.5px solid #fed7aa;align-items:center;justify-content:center;}
 .cell-name{font-size:.78rem;font-weight:700;line-height:1.3;}
@@ -169,11 +172,11 @@ tbody tr:last-child td{border-bottom:none;}
             {% else %}
               <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
                 {% if cell.ts %}
-                  <div class="cell {% if cell.ts.subject.subject_type == 'LAB' %}cell-lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                  <div class="cell {% if cell.ts.subject.is_elective %}cell-elec{% elif cell.ts.subject.subject_type == 'LAB' %}cell-lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
                     <div class="cell-name">{{ cell.ts.subject.name }}</div>
-                    <div class="cell-sec">{{ cell.ts.section.course.department.name }} · {{ cell.ts.section.year }} · {{ cell.ts.section.group }}</div>
+                    <div class="cell-sec">{{ cell.ts.section.course.department.name }} · {{ cell.ts.section.get_year_display_label }} · {{ cell.ts.section.group }}</div>
                     <div class="cell-prof">👤 {{ cell.ts.professor.name }}</div>
-                    <span class="cell-badge">{% if cell.ts.subject.subject_type == 'LAB' %}🧪 Lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}📝 Tutorial{% else %}📘 Theory{% endif %}</span>
+                    <span class="cell-badge">{% if cell.ts.subject.is_elective %}🔀 Elective{% elif cell.ts.subject.subject_type == 'LAB' %}🧪 Lab{% elif cell.ts.subject.subject_type == 'TUTORIAL' %}📝 Tutorial{% else %}📘 Theory{% endif %}</span>
                   </div>
                 {% elif cell.occupied %}<div class="cell cell-occ"><div class="cell-name">🚧 {{ cell.occupied.get_purpose_display }}</div>{% if cell.occupied.description %}<div class="occ-desc" style="font-size:.65rem;color:#7f1d1d;margin-top:3px;">{{ cell.occupied.description }}</div>{% endif %}</div>{% else %}<div class="cell cell-empty"><span class="empty-dash">—</span></div>{% endif %}
               </td>

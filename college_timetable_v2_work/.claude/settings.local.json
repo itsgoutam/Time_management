@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python manage.py check)",
+      "Bash(find \"D:/college_timetable_v2_work\" -iname \"template_time_table.zip\" 2>/dev/null; echo \"---downloads---\"; ls -la \"C:/Users/ADMIN/Downloads\" 2>/dev/null | grep -i \"template_time_table\")",
+      "Bash(unzip -o template_time_table.zip -d _tt_template_extract)",
+      "Bash(python manage.py makemigrations scheduler)",
+      "Bash(python manage.py migrate)",
+      "Bash(unzip -o \"C:/Users/ADMIN/Downloads/testingdata.zip\" -d _testdata)",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/test_modules.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/load_real.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/test_behaviors.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/test_sem_groups.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/test_groups_electives.py)",
+      "PowerShell(python -m pip install --quiet python-pptx python-docx 2>&1)",
+      "PowerShell(python -c \"import pptx, docx; print\\('OK pptx', pptx.__version__, '| docx', docx.__version__\\)\")",
+      "PowerShell($ErrorActionPreference='SilentlyContinue'; $p = @\\(\"C:\\\\Program Files\\\\LibreOffice\\\\program\\\\soffice.exe\",\"C:\\\\Program Files \\(x86\\)\\\\LibreOffice\\\\program\\\\soffice.exe\"\\); $found=$p | Where-Object { Test-Path $_ }; if\\($found\\){ Write-Output \"FOUND: $found\" } else { \\(Get-Command soffice\\).Source; Write-Output \"no soffice in PATH\" })",
+      "Bash(PYTHONIOENCODING=utf-8 python _testdata/test_elective_form.py)"
+    ]
+  }
+}

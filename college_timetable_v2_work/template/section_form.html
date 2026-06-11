@@ -105,8 +105,8 @@ window.onload = function() {
       </div>
     </div>
     <div class="info-box">
-      🎓 <strong>Default:</strong> 4 academic years (1st–4th), Sections A–E.<br>
-      Select <strong>Custom Year</strong> or <strong>Custom Section</strong> to add extras like 5th Year or Section F.
+      🎓 <strong>Default:</strong> Semesters 1–8, Sections A–E.<br>
+      Select <strong>Custom Semester</strong> or <strong>Custom Section</strong> to add an extra label or Section F.
     </div>
     <form method="post">
       {% csrf_token %}
@@ -117,13 +117,13 @@ window.onload = function() {
       </div>
       <hr class="section-divider">
       <div class="field">
-        <label>Academic Year</label>
+        <label>Semester</label>
         {{ form.year }}
-        <div class="help">Default: 1st–4th Year. Choose "Custom Year" to add a 5th Year, etc.</div>
+        <div class="help">Choose Semester 1–8. Use "Custom" only for a non-standard label.</div>
         {% if form.year.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.year.errors.0 }}</div>{% endif %}
       </div>
       <div class="custom-row {% if form.initial.year == 'CUSTOM' or form.instance.year == 'CUSTOM' %}visible{% endif %}" id="custom-year-row">
-        <label>✏️ Custom Year Name</label>
+        <label>✏️ Custom Semester Label</label>
         {{ form.custom_year }}
         {% if form.custom_year.errors %}<div style="color:#92400e;font-size:.78rem;margin-top:4px;">{{ form.custom_year.errors.0 }}</div>{% endif %}
       </div>

@@ -160,17 +160,19 @@ tbody td{padding:12px 20px;font-size:.85rem;}
     <span class="brand-text"></span>
   </div>
   <div class="nav-links">
-    <a href="/add-department/">+ Dept</a>
+    {% if auth_is_admin %}<a href="/add-department/">+ Dept</a>{% endif %}
     <a href="/add-course/">+ Course</a>
     <a href="/add-section/">+ Group</a>
     <a href="/add-room/">+ Room/Lab</a>
     <a href="/add-professor/">+ Professor</a>
     <a href="/csv-upload/" style="background:rgba(124,58,237,.25);color:#fff;border-color:rgba(124,58,237,.4);">📂 CSV Import</a>
     <a href="/add-subject/" class="btn-white">+ Subject</a>
-    
+
     <a href="/free-rooms/" style="background:#16a34a!important;color:#fff!important;border-color:#16a34a!important;font-weight:700!important;">🟢 Free Rooms</a>
     <a href="/free-students/">🎓 Free Students</a>
     <a href="/generate-smart/" class="btn-red">⚡ Smart Generate</a>
+    <a href="/logout/" title="{{ auth_display_name }}" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.35);">
+      {% if auth_is_dept_admin %}🏷 {{ auth_department_name }} · {% endif %}⎋ Logout</a>
   </div>
 </nav>
 <main>
@@ -192,7 +194,7 @@ tbody td{padding:12px 20px;font-size:.85rem;}
     </div>
     <div class="strip-actions">
       <a href="/add-subject/" class="strip-btn strip-btn-white">+ Add Subject</a>
-      <a href="/csv-upload/" class="strip-btn" style="background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.4);">📂 CSV Import</a>
+      {% if auth_is_admin %}<a href="/accounts/" class="strip-btn" style="background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.4);">➕ Add Department Admin</a>{% endif %}
       <a href="/workload-report/" class="strip-btn" style="background:#7c3aed;color:#fff;border:none;">📋 Workload</a>
       <a href="/generate-smart/" class="strip-btn strip-btn-white" style="background:var(--red);color:#fff;">⚡ Smart Generate</a>
     </div>
@@ -203,7 +205,7 @@ tbody td{padding:12px 20px;font-size:.85rem;}
     <div class="tree-panel">
       <div class="tree-header">
         <span>🏫 Structure</span>
-        <a href="/add-department/" style="font-size:.72rem;padding:4px 10px;background:rgba(255,255,255,.2);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">+ Dept</a>
+        {% if auth_is_admin %}<a href="/add-department/" style="font-size:.72rem;padding:4px 10px;background:rgba(255,255,255,.2);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;">+ Dept</a>{% endif %}
       </div>
       <div class="tree-body">
         {% for dept in departments %}
@@ -241,13 +243,13 @@ tbody td{padding:12px 20px;font-size:.85rem;}
                       {{ year_group.list.0.get_year_display_label }}
                     </div>
                     <div class="tree-year-actions">
-                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/" class="tree-act-btn tree-act-view" title="View Year Timetable">👁</a>
-                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/pdf/" class="tree-act-btn tree-act-pdf" title="Export Year PDF">📄</a>
+                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/" class="tree-act-btn tree-act-view" title="View Semester Timetable">👁</a>
+                      <a href="/year-timetable/{{ course.id }}/{{ year_group.grouper }}/pdf/" class="tree-act-btn tree-act-pdf" title="Export Semester PDF">📄</a>
                     </div>
                   </div>
-                  <!-- Section level -->
+                  <!-- Section level (group by effective name so custom sections like I/II/III stay distinct) -->
                   <div class="tree-hidden">
-                    {% regroup year_group.list by section_name as section_list %}
+                    {% regroup year_group.list by get_effective_section_name as section_list %}
                     {% for sec_group in section_list %}
                     <div class="tree-section-wrap">
                       <div class="tree-section-row">

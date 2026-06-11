@@ -7,7 +7,7 @@ import io
 from collections import defaultdict
 from .models import (
     Department, DepartmentSettings, Course, Room, Section,
-    Professor, Subject, ProfessorOccupiedTime
+    Professor, Subject, ProfessorOccupiedTime, ProfessorFixedSlot
 )
 
 
@@ -17,6 +17,28 @@ def _norm(val):
 
 def _norm_up(val):
     return _norm(val).upper()
+
+
+def _norm_key(key):
+    """Canonicalise a CSV header so lookups are case/space-insensitive.
+    'Teacher_name' -> 'teacher_name', 'Subject Name' -> 'subject_name'."""
+    return (key or '').strip().lower().replace(' ', '_')
+
+
+def _normalize_row(row):
+    """Return a copy of a DictReader row keyed by canonical header names.
+    Lets the importers read templates regardless of header casing/spacing."""
+    out = {}
+    for k, v in row.items():
+        if k is None:
+            continue
+        out[_norm_key(k)] = v
+    return out
+
+
+def _is_note_row(text):
+    """True for instructional 'Note:' rows embedded in the templates."""
+    return _norm(text).lower().startswith('note')
 
 
 def _parse_bool(val, default=False):
@@ -79,8 +101,9 @@ def import_department_settings(file_obj, errors, warnings):
     created = 0
     reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
     for i, row in enumerate(reader, 1):
+        row = _normalize_row(row)
         raw_dept = row.get('department', '')
-        if _norm(raw_dept).startswith('#'):
+        if _norm(raw_dept).startswith('#') or _is_note_row(raw_dept):
             continue
         dept_name = _norm(raw_dept)
         if not dept_name:
@@ -123,14 +146,20 @@ def import_department_settings(file_obj, errors, warnings):
 
 # ── Rooms CSV ──────────────────────────────────────────────────────────────────
 
-def import_rooms(file_obj, errors, warnings):
+def import_rooms(file_obj, errors, warnings, default_department=None):
     """
-    Columns: room_id, room_name, room_type, capacity, allowed_subjects
+    Columns: department_name (optional), room_id, room_name, room_type,
+             capacity, allowed_subjects
     room_type: classroom / lab
+    department_name: the room's owning department. Falls back to the uploading
+    Department Admin's department (default_department) when blank.
     """
     created = 0
     reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
     for i, row in enumerate(reader, 1):
+        row = _normalize_row(row)
+        if _is_note_row(row.get('room_id', '')) or _is_note_row(row.get('department_name', '')):
+            continue
         name = _norm(row.get('room_name', ''))
         if not name:
             warnings.append(f"Rooms row {i}: missing room_name, skipped.")
@@ -139,14 +168,27 @@ def import_rooms(file_obj, errors, warnings):
         rtype = 'LAB' if 'LAB' in rtype_raw else 'CLASSROOM'
         capacity = int(row.get('capacity', 60) or 60)
         allowed = _norm(row.get('allowed_subjects', 'all')) or 'all'
+        room_code = _norm(row.get('room_id', ''))   # e.g. MB-202 — sections' fixed_room refers to this
+        # Owning department: from the CSV column, else the uploader's default.
+        dept_name = _norm(row.get('department_name', ''))
+        dept = None
+        if dept_name:
+            dept, _ = Department.objects.get_or_create(name=dept_name)
+        elif default_department is not None:
+            dept = default_department
         room, created_flag = Room.objects.get_or_create(name=name, defaults={
-            'room_type': rtype, 'capacity': capacity, 'allowed_subjects': allowed
+            'room_type': rtype, 'capacity': capacity, 'allowed_subjects': allowed,
+            'department': dept, 'room_id': room_code,
         })
         if not created_flag:
             # Update if exists
             room.room_type = rtype
             room.capacity = capacity
             room.allowed_subjects = allowed
+            if room_code:
+                room.room_id = room_code
+            if dept is not None:
+                room.department = dept
             room.save()
         else:
             created += 1
@@ -207,7 +249,7 @@ def _parse_block_slots(block_str):
     return None
 
 
-def import_professors(file_obj, errors, warnings):
+def import_professors(file_obj, errors, warnings, default_department=None):
     """
     Columns: professor_id, professor_name, max_workload_hours_per_week,
              specialization_subjects,
@@ -216,45 +258,96 @@ def import_professors(file_obj, errors, warnings):
     Multiple block slots can be separated by  |  e.g. "Monday,9:00 to 9:50|Friday,2:00 to 2:50"
     """
     created = 0
+    # Professors whose workload was stated explicitly on at least one row. A blank
+    # workload on later rows keeps the existing value; if stated more than once we
+    # keep the MAXIMUM. (A teacher spans several rows — one per subject taught.)
+    explicit_wl = set()
     reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
     # Normalise fieldnames so column lookup is case/space-insensitive
     raw_fields = reader.fieldnames or []
-    field_map = {f.strip().lower().replace(' ', '_'): f for f in raw_fields}
-    BLOCK_KEY = next((f for f in raw_fields
-                      if 'block' in f.lower() and 'time' in f.lower()), None)
+    norm_fields = [_norm_key(f) for f in raw_fields]
+    BLOCK_KEY = next((f for f in norm_fields
+                      if 'block' in f and 'time' in f), None)
+    # 'Fixed_time_slot(day/time)' — the inverse of a block: the professor MUST
+    # teach the row's subject at this day/time.
+    FIXED_KEY = next((f for f in norm_fields
+                      if 'fixed' in f and 'time' in f), None)
+    # The "for specific class" column may be named SUB_CAN_TEACH_FOR_SPECIFIC_CLASS
+    # or the quoted "Dept Name,Prog Name,Sem,Sec" header (one comma-joined field).
+    SPECIFIC_KEY = next((f for f in norm_fields
+                         if 'sub_can_teach' in f or ('prog' in f and ('sem' in f or 'sec' in f))), None)
 
     for i, row in enumerate(reader, 1):
-        name = _norm(row.get('professor_name', ''))
-        # Skip comment / header rows
-        if not name or name.startswith('#') or name.lower() == 'professor_name':
+        row = _normalize_row(row)
+        # Accept either the new 'Teacher_name' header or the legacy 'professor_name'.
+        name = _norm(row.get('professor_name', '') or row.get('teacher_name', ''))
+        # Skip comment / header / note rows
+        if (not name or name.startswith('#')
+                or name.lower() in ('professor_name', 'teacher_name') or _is_note_row(name)):
             continue
-        max_wl = int(row.get('max_workload_hours_per_week', 20) or 20)
-        spec = _norm(row.get('specialization_subjects', ''))
-        specific_class = _norm(row.get('SUB_CAN_TEACH_FOR_SPECIFIC_CLASS', ''))
+        # Workload may be blank on the extra rows of a multi-subject teacher.
+        wl_raw = _norm(row.get('max_workload_hours_per_week', ''))
+        max_wl = int(wl_raw) if wl_raw.isdigit() else 20
+        # Teacher ID (doubles as the professor's login password).
+        teacher_id = _norm(row.get('teacher_id', '') or row.get('professor_id', ''))
+        # Home department (from the 'Department Name' column), used for admin scoping.
+        # Falls back to the uploading Department Admin's own department.
+        dept_name = _norm(row.get('department_name', ''))
+        home_dept = None
+        if dept_name:
+            home_dept, _ = Department.objects.get_or_create(name=dept_name)
+        elif default_department is not None:
+            home_dept = default_department
+        # Specialization subject: 'specialization_subjects' (legacy) or 'Subject Name' (new).
+        spec = _norm(row.get('specialization_subjects', '') or row.get('subject_name', ''))
+        specific_class = _norm(
+            row.get('sub_can_teach_for_specific_class', '')
+            or (row.get(SPECIFIC_KEY, '') if SPECIFIC_KEY else ''))
 
-        # Parse SUB_CAN_TEACH_FOR_SPECIFIC_CLASS into pipe-separated restriction entries
+        # Parse the "for specific class" field into a pipe-separated restriction entry.
         # Format in CSV: "CSE,BTECH,2 YEAR,SEC-A" → stored as "CSE|BTECH|2 YEAR|SEC-A"
-        section_restr = ''
+        section_restr_entry = ''
         if specific_class:
-            parts = [p.strip() for p in specific_class.split(',')]
-            if len(parts) == 4:
-                section_restr = '|'.join(parts)
-            elif len(parts) > 4:
-                # Could be multiple entries separated differently – store as-is joined
-                section_restr = '|'.join(parts[:4])
+            parts = [p.strip() for p in specific_class.split(',') if p.strip()]
+            if parts:
+                section_restr_entry = '|'.join(parts[:4])
 
         prof, created_flag = Professor.objects.get_or_create(name=name, defaults={
             'max_workload_hours_per_week': max_wl,
             'specialization_subjects': spec,
-            'section_restrictions': section_restr,
+            'section_restrictions': section_restr_entry,
+            'professor_id': teacher_id,
+            'department': home_dept,
         })
-        if not created_flag:
-            prof.max_workload_hours_per_week = max_wl
-            prof.specialization_subjects = spec
-            prof.section_restrictions = section_restr
-            prof.save()
-        else:
+        if created_flag:
             created += 1
+            if wl_raw.isdigit():
+                explicit_wl.add(prof.id)   # workload stated on the first row
+        else:
+            # A teacher can appear on several rows (one per subject they teach).
+            # Workload rule: blank → keep existing; stated → keep the MAXIMUM of all
+            # stated values (the first explicit value also replaces the default 20).
+            if wl_raw.isdigit():
+                if prof.id in explicit_wl:
+                    prof.max_workload_hours_per_week = max(prof.max_workload_hours_per_week, max_wl)
+                else:
+                    prof.max_workload_hours_per_week = max_wl
+                explicit_wl.add(prof.id)
+            if teacher_id and not prof.professor_id:
+                prof.professor_id = teacher_id
+            if home_dept and not prof.department_id:
+                prof.department = home_dept
+            if spec:
+                existing = [s.strip() for s in prof.specialization_subjects.split(',') if s.strip()]
+                if spec.lower() not in [e.lower() for e in existing]:
+                    existing.append(spec)
+                    prof.specialization_subjects = ', '.join(existing)
+            if section_restr_entry:
+                existing_r = [r.strip() for r in prof.section_restrictions.split(',') if r.strip()]
+                if section_restr_entry not in existing_r:
+                    existing_r.append(section_restr_entry)
+                    prof.section_restrictions = ','.join(existing_r)
+            prof.save()
 
         # ── Block time slots ────────────────────────────────────────────────
         if BLOCK_KEY:
@@ -279,6 +372,28 @@ def import_professors(file_obj, errors, warnings):
                             f"Professor '{name}' row {i}: could not parse block slot "
                             f"'{entry}'. Use format: Day,HH:MM to HH:MM "
                             f"(e.g. Tuesday,9:50 to 11:30)")
+
+        # ── Fixed teaching slots (must-teach this subject at this time) ──────
+        if FIXED_KEY:
+            fixed_raw = _norm(row.get(FIXED_KEY, ''))
+            if fixed_raw:
+                for entry in [b.strip() for b in fixed_raw.split('|') if b.strip()]:
+                    parsed = _parse_block_slots(entry)
+                    if parsed:
+                        day, start_slot, end_slot = parsed
+                        ProfessorFixedSlot.objects.get_or_create(
+                            professor=prof,
+                            subject_name=spec,
+                            section_restriction=section_restr_entry,
+                            day=day,
+                            start_slot=start_slot,
+                            end_slot=end_slot,
+                        )
+                    else:
+                        warnings.append(
+                            f"Professor '{name}' row {i}: could not parse fixed slot "
+                            f"'{entry}'. Use format: Day,HH:MM to HH:MM "
+                            f"(e.g. Wednesday,9:50 to 11:30)")
     return created
 
 
@@ -293,11 +408,16 @@ def import_sections(file_obj, errors, warnings):
     free_day: Monday / Tuesday / Wednesday / Thursday / Friday (leave blank for none)
     section_start_time: HH:MM format — overrides dept start time for this section only
     """
+    # Semester 1–8. Accepts digits or ordinals: "3rd" → 3, "5th" → 5, etc.
     YEAR_MAP = {
-        '1': '1ST', '1ST': '1ST', 'FIRST': '1ST',
-        '2': '2ND', '2ND': '2ND', 'SECOND': '2ND',
-        '3': '3RD', '3RD': '3RD', 'THIRD': '3RD',
-        '4': '4TH', '4TH': '4TH', 'FOURTH': '4TH',
+        '1': '1', '1ST': '1', 'FIRST': '1', 'SEM1': '1', 'SEMESTER1': '1',
+        '2': '2', '2ND': '2', 'SECOND': '2', 'SEM2': '2', 'SEMESTER2': '2',
+        '3': '3', '3RD': '3', 'THIRD': '3', 'SEM3': '3', 'SEMESTER3': '3',
+        '4': '4', '4TH': '4', 'FOURTH': '4', 'SEM4': '4', 'SEMESTER4': '4',
+        '5': '5', '5TH': '5', 'FIFTH': '5', 'SEM5': '5', 'SEMESTER5': '5',
+        '6': '6', '6TH': '6', 'SIXTH': '6', 'SEM6': '6', 'SEMESTER6': '6',
+        '7': '7', '7TH': '7', 'SEVENTH': '7', 'SEM7': '7', 'SEMESTER7': '7',
+        '8': '8', '8TH': '8', 'EIGHTH': '8', 'SEM8': '8', 'SEMESTER8': '8',
     }
     SECTION_MAP = {'A': 'A', 'B': 'B', 'C': 'C', 'D': 'D', 'E': 'E'}
     COURSE_MAP = {
@@ -317,8 +437,10 @@ def import_sections(file_obj, errors, warnings):
     created = 0
     reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
     for i, row in enumerate(reader, 1):
+        row = _normalize_row(row)
         dept_name = _norm(row.get('department', ''))
-        year_raw = _norm_up(row.get('year', ''))
+        # Accept either 'year' (legacy) or 'Semester' (new template) for the year/sem field.
+        year_raw = _norm_up(row.get('year', '') or row.get('semester', ''))
         sec_raw = _norm_up(row.get('section', 'A'))
         group_raw = _norm_up(row.get('group', 'G1'))
         fixed_room_name = _norm(row.get('fixed_room', ''))
@@ -349,8 +471,9 @@ def import_sections(file_obj, errors, warnings):
         except ValueError:
             class_count = 0
 
-        # Skip comment / sub-header rows
-        if not dept_name or dept_name.startswith('#') or dept_name.lower() == 'department':
+        # Skip comment / sub-header / note rows
+        if (not dept_name or dept_name.startswith('#')
+                or dept_name.lower() == 'department' or _is_note_row(dept_name)):
             continue
         if not year_raw:
             warnings.append(f"Sections row {i}: missing year, skipped.")
@@ -368,7 +491,9 @@ def import_sections(file_obj, errors, warnings):
 
         fixed_room = None
         if fixed_room_name:
-            fixed_room = Room.objects.filter(name__iexact=fixed_room_name).first()
+            # Sections reference a room by its code (room_id, e.g. MB-202) or name.
+            fixed_room = (Room.objects.filter(room_id__iexact=fixed_room_name).first()
+                          or Room.objects.filter(name__iexact=fixed_room_name).first())
             if not fixed_room:
                 warnings.append(f"Sections row {i}: fixed_room '{fixed_room_name}' not found.")
 
@@ -428,11 +553,16 @@ def import_subjects(file_obj, errors, warnings):
         'THEORY': 'THEORY', 'LAB': 'LAB', 'TUTORIAL': 'TUTORIAL',
         'NPTEL': 'NPTEL', 'NPTL': 'NPTEL',
     }
+    # Semester 1–8 (matches Section.year values). "3rd" → 3, "5th" → 5, etc.
     YEAR_NORM = {
-        '1ST': '1ST', 'FIRST': '1ST', '1': '1ST',
-        '2ND': '2ND', 'SECOND': '2ND', '2': '2ND',
-        '3RD': '3RD', 'THIRD': '3RD', '3': '3RD',
-        '4TH': '4TH', 'FOURTH': '4TH', '4': '4TH',
+        '1': '1', '1ST': '1', 'FIRST': '1',
+        '2': '2', '2ND': '2', 'SECOND': '2',
+        '3': '3', '3RD': '3', 'THIRD': '3',
+        '4': '4', '4TH': '4', 'FOURTH': '4',
+        '5': '5', '5TH': '5', 'FIFTH': '5',
+        '6': '6', '6TH': '6', 'SIXTH': '6',
+        '7': '7', '7TH': '7', 'SEVENTH': '7',
+        '8': '8', '8TH': '8', 'EIGHTH': '8',
     }
 
     subject_defs = []
@@ -444,9 +574,11 @@ def import_subjects(file_obj, errors, warnings):
     is_new_format = 'sub_type' in fieldnames or 'theory_per_week' in fieldnames
 
     for i, row in enumerate(reader, 1):
+        row = _normalize_row(row)
         name = _norm(row.get('subject_name', ''))
-        # Skip comment / sub-header rows
-        if not name or name.startswith('#') or name.lower() == 'subject_name':
+        # Skip comment / sub-header / note rows
+        if (not name or name.startswith('#')
+                or name.lower() == 'subject_name' or _is_note_row(name)):
             continue
 
         code = _norm(row.get('subject_id', ''))
@@ -456,8 +588,11 @@ def import_subjects(file_obj, errors, warnings):
         spec_req = _parse_bool(row.get('specialization_required', 'No'))
 
         if is_new_format:
-            sub_type_raw = _norm_up(row.get('sub_type', 'DEPARTMENT'))
+            # Sub_type vocabulary: REGULAR / ELECTIVE → normal theory/lab/tutorial
+            # split; NPTEL/NPTL → NPTEL. (DEPARTMENT kept for backward compat.)
+            sub_type_raw = _norm_up(row.get('sub_type', 'REGULAR'))
             is_nptl = sub_type_raw in ('NPTL', 'NPTEL')
+            is_elective = sub_type_raw == 'ELECTIVE'
 
             def _safe_int(val, default=0):
                 try:
@@ -470,8 +605,10 @@ def import_subjects(file_obj, errors, warnings):
             tut    = _safe_int(row.get('tutorial_per_week', 0))
 
             course_filter = _norm(row.get('course', ''))
-            year_raw      = _norm_up(row.get('academic_year', ''))
+            # Accept either 'academic_year' (legacy) or 'Semester' (new template).
+            year_raw      = _norm_up(row.get('academic_year', '') or row.get('semester', ''))
             year_filter   = YEAR_NORM.get(year_raw, year_raw)
+            dept_filter   = _norm(row.get('department_name', ''))
 
             base = {
                 'code': code,
@@ -479,6 +616,8 @@ def import_subjects(file_obj, errors, warnings):
                 'specialization_required': spec_req,
                 'course_filter': course_filter,
                 'year_filter': year_filter,
+                'dept_filter': dept_filter,
+                'is_elective': is_elective,
             }
 
             if is_nptl:
@@ -518,7 +657,7 @@ def import_subjects(file_obj, errors, warnings):
                 'name': name, 'code': code, 'subject_type': stype,
                 'lectures_per_week': lectures, 'duration': duration,
                 'allowed_groups': allowed_groups, 'specialization_required': spec_req,
-                'course_filter': '', 'year_filter': '',
+                'course_filter': '', 'year_filter': '', 'dept_filter': '',
             })
 
     return subject_defs
@@ -528,10 +667,13 @@ def import_subjects(file_obj, errors, warnings):
 
 # ── Full Import Orchestrator ───────────────────────────────────────────────────
 
-def run_full_import(files_dict):
+def run_full_import(files_dict, default_department=None):
     """
     files_dict keys: 'subjects', 'professors', 'rooms', 'sections', 'dept_settings'
     All values are file-like objects (Django UploadedFile).
+    default_department: when a Department Admin uploads, professors/rooms that do
+    not name a department in the CSV are assigned to this department, keeping the
+    data within that admin's scope. None for a full Admin (no default).
     Returns: dict with counts and error/warning lists.
     """
     errors = []
@@ -550,14 +692,16 @@ def run_full_import(files_dict):
     # 2. Rooms
     if 'rooms' in files_dict and files_dict['rooms']:
         try:
-            counts['rooms'] = import_rooms(files_dict['rooms'], errors, warnings)
+            counts['rooms'] = import_rooms(files_dict['rooms'], errors, warnings,
+                                           default_department=default_department)
         except Exception as e:
             errors.append(f"Rooms import failed: {e}")
 
     # 3. Professors
     if 'professors' in files_dict and files_dict['professors']:
         try:
-            counts['professors'] = import_professors(files_dict['professors'], errors, warnings)
+            counts['professors'] = import_professors(files_dict['professors'], errors, warnings,
+                                                     default_department=default_department)
         except Exception as e:
             errors.append(f"Professors import failed: {e}")
 
@@ -680,6 +824,7 @@ def run_full_import(files_dict):
                     'duration': sdef['duration'],
                     'allowed_groups': sdef['allowed_groups'],
                     'specialization_required': sdef['specialization_required'],
+                    'is_elective': sdef.get('is_elective', False),
                     'lab_room': lab_room,
                 }
             )
@@ -690,18 +835,29 @@ def run_full_import(files_dict):
                 subj.duration                = sdef['duration']
                 subj.allowed_groups          = sdef['allowed_groups']
                 subj.specialization_required = sdef['specialization_required']
+                subj.is_elective             = sdef.get('is_elective', False)
                 if lab_room:
                     subj.lab_room = lab_room
                 subj.save()
             return subj, created_flag
 
+        def _norm_dept(s):
+            # Compare department names ignoring case, spaces and '&' spacing.
+            return _norm_up(s).replace(' ', '').replace('&', '')
+
         def _section_matches(sdef, sec):
             ag            = sdef['allowed_groups']
             course_filter = _norm_up(sdef.get('course_filter', ''))
             year_filter   = _norm_up(sdef.get('year_filter', ''))
+            dept_filter   = sdef.get('dept_filter', '')
             # Specific group filter — only assign to that group
             if ag in ('G1', 'G2', 'G3', 'G4') and sec.group != ag:
                 return False
+            # Department filter — keep a subject within its own department's sections.
+            if dept_filter:
+                sec_dept = getattr(getattr(sec.course, 'department', None), 'name', '')
+                if _norm_dept(dept_filter) != _norm_dept(sec_dept):
+                    return False
             if course_filter:
                 sec_course = _norm_up(getattr(sec.course, 'name', ''))
                 if course_filter.replace('.', '') not in sec_course.replace('.', ''):

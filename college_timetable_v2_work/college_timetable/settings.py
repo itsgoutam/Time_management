@@ -48,7 +48,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'scheduler.middleware.RoleAccessMiddleware',
 ]
+
+# Custom session-based role auth (see scheduler/accounts.py). Unauthenticated
+# requests are redirected here by RoleAccessMiddleware.
+LOGIN_URL = 'login'
 
 ROOT_URLCONF = 'college_timetable.urls'
 
@@ -62,6 +67,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'scheduler.accounts.auth_context',
             ],
         },
     },

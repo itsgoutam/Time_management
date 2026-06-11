@@ -106,6 +106,11 @@ td.lunch-col{background:var(--lunch-bg)!important;border-right:1px solid var(--l
 .cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
 .cell-lab   {background:var(--lab-bg);  border:1.5px solid var(--lab-border);}
 .cell-tut   {background:var(--tut-bg);  border:1.5px solid var(--tut-border);}
+.cell-elec  {background:#fff3e6;border:1.5px dashed #fb923c;}
+.cell-elec   .cell-code{background:#ffedd5;color:#c2410c;}
+.cell-elec   .cell-name{color:#c2410c;}
+.cell-elec   .cell-badge{background:#ffedd5;color:#c2410c;}
+.chip-elec{background:#ffedd5;color:#c2410c;}
 .cell-empty {background:#fafbff;        border:1.5px solid #eef2ff;}
 .cell-name{font-size:.76rem;font-weight:700;line-height:1.3;}
 .cell-code{font-size:.63rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
@@ -149,10 +154,11 @@ table.legend-tbl tbody tr:last-child td{border-bottom:none;}
   </div>
   <div class="nav-right">
     <a href="/section-timetable/{{ course.id }}/{{ year }}/{{ section_name }}/pdf/" class="nav-btn btn-pdf">📄 Export Section PDF</a>
+    {% if auth_is_staff %}
     <a href="/" class="nav-btn">← Dashboard</a>
-  
-    
     <a href="/workload-report/" class="nav-btn" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
+    {% endif %}
+    {% if auth_role == 'STUDENT' %}<a href="/logout/" class="nav-btn">⎋ Exit</a>{% endif %}
   </div>
 </nav>
 
@@ -234,13 +240,14 @@ table.legend-tbl tbody tr:last-child td{border-bottom:none;}
                     {% if cell.slot in lunch_slots %}
                       <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
                     {% elif cell.entry %}
-                      <div class="cell {% if cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                      <div class="cell {% if cell.entry.subject.is_elective %}cell-elec{% elif cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
                         {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}
                         <div class="cell-name">{{ cell.entry.subject.name }}</div>
                         <div class="cell-prof">👤 {{ cell.entry.professor.name }}</div>
                         {% if cell.entry.room %}<div class="cell-room">🚪 {{ cell.entry.room.name }}</div>{% endif %}
                         <span class="cell-badge">
-                          {% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab · 100m
+                          {% if cell.entry.subject.is_elective %}🔀 Elective · 50m
+                          {% elif cell.entry.subject.subject_type == 'LAB' %}🧪 Lab · 100m
                           {% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tut · 50m
                           {% else %}📘 Theory · 50m{% endif %}
                         </span>
@@ -290,15 +297,16 @@ table.legend-tbl tbody tr:last-child td{border-bottom:none;}
               {% if cell.entry and not cell.skip %}
                 <tr>
                   <td>
-                    <span class="code-chip {% if cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
+                    <span class="code-chip {% if cell.entry.subject.is_elective %}chip-elec{% elif cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
                       {% if cell.entry.subject.code %}{{ cell.entry.subject.code }}{% else %}—{% endif %}
                     </span>
                   </td>
                   <td><strong>{{ cell.entry.subject.name }}</strong></td>
                   <td>{{ cell.entry.professor.name }}</td>
                   <td>
-                    <span class="type-badge {% if cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
-                      {% if cell.entry.subject.subject_type == 'LAB' %}🧪 Lab
+                    <span class="type-badge {% if cell.entry.subject.is_elective %}chip-elec{% elif cell.entry.subject.subject_type == 'LAB' %}chip-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}chip-tut{% else %}chip-theory{% endif %}">
+                      {% if cell.entry.subject.is_elective %}🔀 Elective
+                      {% elif cell.entry.subject.subject_type == 'LAB' %}🧪 Lab
                       {% elif cell.entry.subject.subject_type == 'TUTORIAL' %}📝 Tutorial
                       {% else %}📘 Theory{% endif %}
                     </span>

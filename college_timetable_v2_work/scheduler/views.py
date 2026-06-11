@@ -4,11 +4,13 @@ from django.http import HttpResponse
 from django.db.models import Prefetch
 from .models import (Subject, Professor, TimeSlot, Section, Course, Department,
                      Room, ProfessorOccupiedTime, RoomOccupiedTime, SLOT_TIMES_DISPLAY,
-                     DepartmentSettings, CSVImportLog)
+                     DepartmentSettings, CSVImportLog, ProfessorFixedSlot)
 from .forms import (SubjectForm, ProfessorForm, SectionForm, CourseForm,
                     DepartmentForm, RoomForm, ProfessorOccupiedTimeForm,
                     RoomOccupiedTimeForm, QuickProfessorBlockForm, CSVUploadForm)
 from .csv_import import run_full_import
+from . import accounts as acc
+from django.http import HttpResponseForbidden
 import random
 from io import BytesIO
 from collections import defaultdict, Counter
@@ -61,9 +63,66 @@ def _build_tt_data(section):
     return data
 
 
+# ─── Department-scope guards (Dept Admin = strictly own department) ────────────
+
+def _dept_guard(request, obj):
+    """Return a 403 response if the current user may not act on `obj`'s department.
+
+    Admin passes everything. A Department Admin is confined to their own
+    department; touching another department's record (or a shared/global one)
+    is forbidden. Returns None when access is allowed.
+    """
+    if not acc.can_access_object(request, obj):
+        return HttpResponseForbidden(
+            '<h1>403 — Access denied</h1>'
+            '<p>You can only manage records for your own department.</p>'
+            '<p><a href="/">← Dashboard</a></p>')
+    return None
+
+
+def _scope_form_to_dept(request, form):
+    """Restrict a form's department/course/section/room/professor choices to the
+    Department Admin's own department, so they cannot assign across departments.
+    No-op for Admins."""
+    from django.db.models import Q
+    dept_id = acc.current_department_id(request)
+    if not dept_id:
+        return
+    f = form.fields
+    if 'department' in f:
+        f['department'].queryset = Department.objects.filter(id=dept_id)
+        f['department'].initial = dept_id
+    if 'course' in f:
+        f['course'].queryset = Course.objects.filter(department_id=dept_id)
+    if 'sections' in f:
+        f['sections'].queryset = f['sections'].queryset.filter(course__department_id=dept_id)
+    room_scope = Q(department_id=dept_id) | Q(department__isnull=True)
+    if 'fixed_room' in f:
+        f['fixed_room'].queryset = f['fixed_room'].queryset.filter(room_scope)
+    if 'lab_room' in f:
+        f['lab_room'].queryset = f['lab_room'].queryset.filter(room_scope)
+    if 'professor' in f:
+        f['professor'].queryset = f['professor'].queryset.filter(department_id=dept_id)
+
+
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 
 def dashboard(request):
+    # Route non-staff roles to their own landing page.
+    role = acc.current_role(request)
+    if role == acc.PROFESSOR:
+        return redirect('professor_schedule', professor_id=acc.current_professor_id(request))
+    if role == acc.STUDENT:
+        sec = Section.objects.select_related('course').filter(id=acc.current_section_id(request)).first()
+        if sec:
+            return redirect('section_combined_timetable',
+                            course_id=sec.course_id, year=sec.year,
+                            section_name=sec.get_effective_section_name())
+        return redirect('login')
+
+    # Staff dashboard. Department Admins see only their own department.
+    dept_id = acc.current_department_id(request)
+
     departments = Department.objects.prefetch_related(
         Prefetch('courses__sections',
             queryset=Section.objects.order_by('year', 'section_name', 'custom_year', 'custom_section_name', 'group'))
@@ -72,6 +131,17 @@ def dashboard(request):
     subjects = Subject.objects.select_related('section__course__department').all()
     sections = Section.objects.select_related('course__department').order_by('year', 'section_name', 'custom_year', 'custom_section_name', 'group')
     rooms = Room.objects.select_related('department').all()
+
+    if dept_id:
+        from django.db.models import Q
+        own_or_unassigned = Q(department_id=dept_id) | Q(department__isnull=True)
+        departments = departments.filter(id=dept_id)
+        # Include unassigned professors/rooms so the admin can claim/manage them.
+        professors = professors.filter(own_or_unassigned)
+        subjects = subjects.filter(section__course__department_id=dept_id)
+        sections = sections.filter(course__department_id=dept_id)
+        rooms = rooms.filter(own_or_unassigned)
+
     classrooms = rooms.filter(room_type='CLASSROOM')
     labs = rooms.filter(room_type='LAB')
     subjects_no_section = subjects.filter(section__isnull=True)
@@ -117,6 +187,7 @@ def delete_department(request, dept_id):
 
 def add_course(request):
     form = CourseForm(request.POST or None)
+    _scope_form_to_dept(request, form)
     if form.is_valid():
         form.save()
         return redirect('dashboard')
@@ -124,7 +195,10 @@ def add_course(request):
 
 def edit_course(request, course_id):
     course = get_object_or_404(Course, id=course_id)
+    guard = _dept_guard(request, course)
+    if guard: return guard
     form = CourseForm(request.POST or None, instance=course)
+    _scope_form_to_dept(request, form)
     if form.is_valid():
         form.save()
         messages.success(request, '✅ Course updated.')
@@ -133,6 +207,8 @@ def edit_course(request, course_id):
 
 def delete_course(request, course_id):
     course = get_object_or_404(Course, id=course_id)
+    guard = _dept_guard(request, course)
+    if guard: return guard
     if request.method == 'POST':
         course.delete()
         messages.success(request, '🗑️ Course deleted.')
@@ -144,15 +220,23 @@ def delete_course(request, course_id):
 
 def add_room(request):
     form = RoomForm(request.POST or None)
+    _scope_form_to_dept(request, form)
     if form.is_valid():
-        form.save()
+        room = form.save(commit=False)
+        dept_id = acc.current_department_id(request)
+        if dept_id and not room.department_id:
+            room.department_id = dept_id
+        room.save()
         messages.success(request, '✅ Room added.')
         return redirect('dashboard')
     return render(request, 'generic_form.html', {'form': form, 'title': 'Add Room / Lab', 'icon': '🚪'})
 
 def edit_room(request, room_id):
     room = get_object_or_404(Room, id=room_id)
+    guard = _dept_guard(request, room)
+    if guard: return guard
     form = RoomForm(request.POST or None, instance=room)
+    _scope_form_to_dept(request, form)
     if form.is_valid():
         form.save()
         messages.success(request, '✅ Room updated.')
@@ -161,6 +245,8 @@ def edit_room(request, room_id):
 
 def delete_room(request, room_id):
     room = get_object_or_404(Room, id=room_id)
+    guard = _dept_guard(request, room)
+    if guard: return guard
     if request.method == 'POST':
         room.delete()
         messages.success(request, f'🗑️ Room "{room.name}" deleted.')
@@ -217,29 +303,45 @@ def room_schedule(request, room_id):
 
 # ─── Section CRUD ─────────────────────────────────────────────────────────────
 
+def _section_storage(chosen, custom_text=''):
+    """Map a chosen section name to (section_name, custom_section_name) the same way
+    the CSV importer does: A–E stay as-is, anything else is stored as CUSTOM + name."""
+    v = (chosen or '').strip()
+    custom_text = (custom_text or '').strip()
+    if v == 'CUSTOM':
+        return 'CUSTOM', custom_text
+    if v in ('A', 'B', 'C', 'D', 'E'):
+        return v, ''
+    return 'CUSTOM', v   # e.g. 'I', 'II' — keep consistent with imported sections
+
+
 def add_section(request):
     form = SectionForm(request.POST or None)
+    _scope_form_to_dept(request, form)
     if request.method == 'POST':
         selected_groups = request.POST.getlist('groups')
         if form.is_valid() and selected_groups:
             base = form.save(commit=False)
+            sec_code, custom_sec = _section_storage(
+                form.cleaned_data.get('section_name'),
+                form.cleaned_data.get('custom_section_name'))
             created = 0
             skipped = 0
             for grp in selected_groups:
                 if Section.objects.filter(
                     course=base.course, year=base.year,
-                    section_name=base.section_name,
+                    section_name=sec_code,
                     custom_year=base.custom_year,
-                    custom_section_name=base.custom_section_name,
+                    custom_section_name=custom_sec,
                     group=grp
                 ).exists():
                     skipped += 1
                     continue
                 Section.objects.create(
                     course=base.course, year=base.year,
-                    section_name=base.section_name,
+                    section_name=sec_code,
                     custom_year=base.custom_year,
-                    custom_section_name=base.custom_section_name,
+                    custom_section_name=custom_sec,
                     group=grp,
                     fixed_room=base.fixed_room,
                     free_day=base.free_day,
@@ -257,15 +359,24 @@ def add_section(request):
 
 def edit_section(request, section_id):
     section = get_object_or_404(Section, id=section_id)
+    guard = _dept_guard(request, section)
+    if guard: return guard
     form = SectionForm(request.POST or None, instance=section)
+    _scope_form_to_dept(request, form)
     if form.is_valid():
-        form.save()
+        base = form.save(commit=False)
+        base.section_name, base.custom_section_name = _section_storage(
+            form.cleaned_data.get('section_name'),
+            form.cleaned_data.get('custom_section_name'))
+        base.save()
         messages.success(request, '✅ Section updated.')
         return redirect('dashboard')
     return render(request, 'section_form.html', {'form': form, 'title': 'Edit Section', 'icon': '👥', 'edit': True})
 
 def delete_section(request, section_id):
     section = get_object_or_404(Section, id=section_id)
+    guard = _dept_guard(request, section)
+    if guard: return guard
     if request.method == 'POST':
         section.delete()
         messages.success(request, '🗑️ Section deleted.')
@@ -277,6 +388,7 @@ def delete_section(request, section_id):
 
 def add_subject(request):
     form = SubjectForm(request.POST or None)
+    _scope_form_to_dept(request, form)
     qblock_form = QuickProfessorBlockForm(prefix='qblock')
     if request.method == 'POST':
         if 'save_subject' in request.POST and form.is_valid():
@@ -294,6 +406,7 @@ def add_subject(request):
                         lectures_per_week=form.cleaned_data['lectures_per_week'],
                         section=sec,
                         lab_room=form.cleaned_data.get('lab_room'),
+                        is_elective=form.cleaned_data.get('is_elective', False),
                     )
                     subj.save()
                     if professor:
@@ -337,7 +450,10 @@ def add_subject(request):
 
 def edit_subject(request, subject_id):
     subject = get_object_or_404(Subject, id=subject_id)
+    guard = _dept_guard(request, subject)
+    if guard: return guard
     form = SubjectForm(request.POST or None, instance=subject)
+    _scope_form_to_dept(request, form)
     qblock_form = QuickProfessorBlockForm(prefix='qblock')
     if request.method == 'POST':
         if 'save_subject' in request.POST and form.is_valid():
@@ -346,6 +462,7 @@ def edit_subject(request, subject_id):
             subj = form.save(commit=False)
             if selected_sections:
                 subj.section = list(selected_sections)[0]
+            subj.is_elective = form.cleaned_data.get('is_elective', False)
             subj.save()
             # Enforce single professor assignment
             professor = form.cleaned_data.get('professor')
@@ -384,6 +501,8 @@ def edit_subject(request, subject_id):
 
 def delete_subject(request, subject_id):
     subject = get_object_or_404(Subject, id=subject_id)
+    guard = _dept_guard(request, subject)
+    if guard: return guard
     if request.method == 'POST':
         subject.delete()
         messages.success(request, '🗑️ Subject deleted.')
@@ -396,21 +515,35 @@ def delete_subject(request, subject_id):
 def add_professor(request):
     form = ProfessorForm(request.POST or None)
     if form.is_valid():
-        form.save()
+        professor = form.save(commit=False)
+        # Department Admins create professors in their own department.
+        dept_id = acc.current_department_id(request)
+        if dept_id and not professor.department_id:
+            professor.department_id = dept_id
+        professor.save()
         return redirect('dashboard')
     return render(request, 'professor_form.html', {'form': form})
 
 def edit_professor(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
+    guard = _dept_guard(request, professor)
+    if guard: return guard
     form = ProfessorForm(request.POST or None, instance=professor)
     if form.is_valid():
-        form.save()
+        prof = form.save(commit=False)
+        # A Dept Admin editing an unassigned professor claims them into their dept.
+        dept_id = acc.current_department_id(request)
+        if dept_id and not prof.department_id:
+            prof.department_id = dept_id
+        prof.save()
         messages.success(request, '✅ Professor updated.')
         return redirect('dashboard')
     return render(request, 'professor_form.html', {'form': form, 'edit': True})
 
 def delete_professor(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
+    guard = _dept_guard(request, professor)
+    if guard: return guard
     if request.method == 'POST':
         professor.delete()
         messages.success(request, '🗑️ Professor deleted.')
@@ -422,6 +555,8 @@ def delete_professor(request, professor_id):
 
 def add_occupied_time(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
+    guard = _dept_guard(request, professor)
+    if guard: return guard
     initial = {'professor': professor}
     form = ProfessorOccupiedTimeForm(request.POST or None, initial=initial)
     if form.is_valid():
@@ -434,6 +569,8 @@ def add_occupied_time(request, professor_id):
 
 def edit_occupied_time(request, occupied_id):
     occ = get_object_or_404(ProfessorOccupiedTime, id=occupied_id)
+    guard = _dept_guard(request, occ)
+    if guard: return guard
     form = ProfessorOccupiedTimeForm(request.POST or None, instance=occ)
     if form.is_valid():
         form.save()
@@ -445,6 +582,8 @@ def edit_occupied_time(request, occupied_id):
 
 def delete_occupied_time(request, occupied_id):
     occ = get_object_or_404(ProfessorOccupiedTime, id=occupied_id)
+    guard = _dept_guard(request, occ)
+    if guard: return guard
     prof_id = occ.professor_id
     if request.method == 'POST':
         occ.delete()
@@ -506,6 +645,8 @@ def delete_quick_block(request, occupied_id):
 # ─── Room Occupied Time CRUD ──────────────────────────────────────────────────
 def add_room_occupied(request, room_id):
     room = get_object_or_404(Room, id=room_id)
+    guard = _dept_guard(request, room)
+    if guard: return guard
     initial = {'room': room}
     form = RoomOccupiedTimeForm(request.POST or None, initial=initial)
     if form.is_valid():
@@ -517,6 +658,8 @@ def add_room_occupied(request, room_id):
 
 def edit_room_occupied(request, occupied_id):
     occ = get_object_or_404(RoomOccupiedTime, id=occupied_id)
+    guard = _dept_guard(request, occ)
+    if guard: return guard
     form = RoomOccupiedTimeForm(request.POST or None, instance=occ)
     if form.is_valid():
         form.save()
@@ -527,6 +670,8 @@ def edit_room_occupied(request, occupied_id):
 
 def delete_room_occupied(request, occupied_id):
     occ = get_object_or_404(RoomOccupiedTime, id=occupied_id)
+    guard = _dept_guard(request, occ)
+    if guard: return guard
     room_id = occ.room_id
     if request.method == 'POST':
         occ.delete()
@@ -551,6 +696,14 @@ def professor_schedule(request, professor_id):
         if occ.day in occupied_map:
             for s in occ.blocked_slots():
                 occupied_map[occ.day][s] = occ
+
+    # Fixed teaching slots (from CSV) overlaid on the grid as reserved commitments.
+    fixed_slots = professor.fixed_slots.all().order_by('day', 'start_slot')
+    fixed_map = {day: {} for day in DAYS}
+    for fx in fixed_slots:
+        if fx.day in fixed_map:
+            for s in fx.blocked_slots():
+                fixed_map[fx.day][s] = fx
 
     raw = {day: {slot: [] for slot in SLOTS} for day in DAYS}
     for ts in TimeSlot.objects.filter(professor=professor).select_related(
@@ -598,10 +751,11 @@ def professor_schedule(request, professor_id):
         for i, slot in enumerate(SLOTS):
             if skip_next:
                 skip_next = False
-                cells.append({'entries': [], 'colspan': 1, 'skip': True, 'occupied': None})
+                cells.append({'entries': [], 'colspan': 1, 'skip': True, 'occupied': None, 'fixed': None})
                 continue
             entries = raw[day][slot]
             occ = occupied_map[day].get(slot)
+            fx = fixed_map[day].get(slot)
             seen = {}
             deduped = []
             for ts in entries:
@@ -617,10 +771,10 @@ def professor_schedule(request, professor_id):
                 if next_slot and deduped[0]['ts'].subject_id in {t.subject_id for t in raw[day][next_slot]}:
                     is_lab_pair = True
             if is_lab_pair:
-                cells.append({'entries': deduped, 'colspan': 2, 'skip': False, 'occupied': occ})
+                cells.append({'entries': deduped, 'colspan': 2, 'skip': False, 'occupied': occ, 'fixed': fx})
                 skip_next = True
             else:
-                cells.append({'entries': deduped, 'colspan': 1, 'skip': False, 'occupied': occ})
+                cells.append({'entries': deduped, 'colspan': 1, 'skip': False, 'occupied': occ, 'fixed': fx})
         table[day] = cells
 
     total_slots = sum(1 for d in DAYS for c in table[d] if not c['skip'] and c['entries'])
@@ -678,6 +832,7 @@ def professor_schedule(request, professor_id):
         'qr_url': prof_url,
         'occupied_times': occupied_times,
         'occupied_map': occupied_map,
+        'fixed_slots': professor.fixed_slots.all().order_by('day', 'start_slot'),
         'slot_times_display': SLOT_TIMES_DISPLAY,
         'lunch_label': '12:20–1:10',
     })
@@ -717,7 +872,7 @@ def year_timetable(request, course_id, year):
     course = get_object_or_404(Course, id=course_id)
     sections = Section.objects.filter(course=course, year=year).select_related('course__department')
     if not sections.exists():
-        messages.error(request, 'No sections found for this year.')
+        messages.error(request, 'No sections found for this semester.')
         return redirect('dashboard')
     section_tables = []
     for section in sections:
@@ -788,8 +943,13 @@ def section_timetable(request, section_id):
 
 
 def section_combined_timetable(request, course_id, year, section_name):
+    from django.db.models import Q
     course = get_object_or_404(Course, id=course_id)
-    groups = Section.objects.filter(course=course, year=year, section_name=section_name).select_related('course__department').order_by('group')
+    # `section_name` here is the EFFECTIVE name (e.g. 'A' or a custom 'I'/'II'),
+    # so custom-named sections stay distinct instead of all matching 'CUSTOM'.
+    groups = Section.objects.filter(course=course, year=year).filter(
+        Q(section_name=section_name) | Q(section_name='CUSTOM', custom_section_name=section_name)
+    ).select_related('course__department').order_by('group')
     if not groups.exists():
         messages.error(request, 'No groups found for this section.')
         return redirect('dashboard')
@@ -1303,6 +1463,27 @@ def _get_pdf_styles():
     }
 
 
+def _build_section_header(title, styles_map, hex_color='#1a56db'):
+    """A full-width coloured banner used as a divider between sections in the
+    multi-part department PDF (Part 1 … Part 4)."""
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    banner_style = ParagraphStyle('banner', fontSize=13, fontName='Helvetica-Bold',
+                                  alignment=TA_CENTER, textColor=colors.white, leading=16)
+    t = Table([[Paragraph(title, banner_style)]], colWidths=[23.5*cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor(hex_color)),
+        ('TOPPADDING',    (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+    ]))
+    return t
+
+
 def _pdf_slot_to_col(slot):
     """Map slot number (1-9) to table column index (0=Day, 6=Lunch)."""
     return slot if slot <= 5 else slot + 1
@@ -1751,6 +1932,8 @@ def export_department_pdf(request, dept_id):
                                     Spacer, Table, TableStyle, Image, HRFlowable)
 
     dept = get_object_or_404(Department, id=dept_id)
+    guard = _dept_guard(request, dept)
+    if guard: return guard
     styles_map = _get_pdf_styles()
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
@@ -2203,13 +2386,6 @@ def csv_upload(request):
         cd = form.cleaned_data
         clear = cd.get('clear_existing', False)
 
-        # Optional data clear
-        if clear:
-            TimeSlot.objects.all().delete()
-            Subject.objects.all().delete()
-            Section.objects.all().delete()
-            messages.warning(request, '🗑️ Existing timetable, subjects and sections cleared.')
-
         files_dict = {}
         if cd.get('subjects_csv'):    files_dict['subjects']      = cd['subjects_csv']
         if cd.get('professors_csv'):  files_dict['professors']    = cd['professors_csv']
@@ -2217,7 +2393,49 @@ def csv_upload(request):
         if cd.get('sections_csv'):    files_dict['sections']      = cd['sections_csv']
         if cd.get('dept_settings_csv'): files_dict['dept_settings'] = cd['dept_settings_csv']
 
-        counts, errors, warnings_list = run_full_import(files_dict)
+        # A timetable already on record means this upload is a re-import that
+        # must OVERRIDE the previous result — not merge on top of it.
+        timetable_exists = TimeSlot.objects.exists()
+        re_import = timetable_exists and not clear
+
+        # Department Admins are scoped to their own department: a re-import must
+        # NOT wipe other departments' sections/subjects/timetables (so a shared
+        # professor's timetable is preserved and only updated on regeneration).
+        dept_id = acc.current_department_id(request)
+        default_department = Department.objects.filter(id=dept_id).first() if dept_id else None
+
+        if dept_id:
+            sec_scope  = Section.objects.filter(course__department_id=dept_id)
+            subj_scope = Subject.objects.filter(section__course__department_id=dept_id)
+            ts_scope   = TimeSlot.objects.filter(section__course__department_id=dept_id)
+        else:
+            sec_scope, subj_scope, ts_scope = (Section.objects.all(),
+                                               Subject.objects.all(), TimeSlot.objects.all())
+
+        # Optional data clear (scoped to the uploader's department for Dept Admins)
+        if clear:
+            ts_scope.delete()
+            subj_scope.delete()
+            sec_scope.delete()
+            scope_label = 'your department' if dept_id else 'all departments'
+            messages.warning(request, f'🗑️ Existing timetable, subjects and sections for {scope_label} cleared.')
+        elif re_import:
+            # Re-upload after a timetable was generated: drop the stale timetable and
+            # the structural data being replaced so the new one reflects THIS file,
+            # instead of a merge of the old and new data. Scoped per department.
+            # (Deleting a Section cascades to its Subjects and TimeSlots; deleting a
+            #  Subject cascades to its TimeSlots.)
+            ts_scope.delete()
+            if 'sections' in files_dict:
+                sec_scope.delete()
+            if 'subjects' in files_dict:
+                subj_scope.delete()
+            messages.info(request, '♻️ Re-import detected — the previous timetable was cleared and will be rebuilt from this file.')
+
+        # Department Admins: professors/rooms without a department in the CSV are
+        # assigned to their department, so the login names/IDs and records stay
+        # within their scope. Full Admins pass None (use whatever the CSV says).
+        counts, errors, warnings_list = run_full_import(files_dict, default_department=default_department)
 
         # Save log
         status = 'FAILED' if errors and not any(counts.values()) else \
@@ -2245,8 +2463,10 @@ def csv_upload(request):
         for e in errors:
             messages.error(request, f"❌ {e}")
 
-        # Auto-generate timetable
-        if cd.get('auto_generate') and not errors:
+        # Auto-generate timetable.
+        # Always regenerate on a re-import so the overridden timetable is rebuilt
+        # from the current file; otherwise honour the user's checkbox.
+        if (cd.get('auto_generate') or re_import) and not errors:
             return redirect('generate_smart')
 
         return redirect('csv_upload')
@@ -2260,60 +2480,51 @@ def csv_download_template(request, template_name):
         'subjects': {
             'filename': 'subjects_template.csv',
             'rows': [
-                'subject_id,subject_name,sub_type,theory_per_week,lab_per_week,tutorial_per_week,allowed_groups,specialization_required,course,academic_year',
-                '# sub_type: DEPARTMENT (for theory/lab/tutorial) or NPTL (for NPTEL subjects)',
-                '# allowed_groups: G1 / G2 / G1 G2 (for both)',
-                '# specialization_required: YES / NO',
-                '# course: e.g. B.TECH   academic_year: e.g. 2ND / 3RD',
-                'CS303,DBMS,DEPARTMENT,3,2,1,G1 G2,NO,B.TECH,2ND',
-                'CS305,Machine Learning,DEPARTMENT,3,0,0,G1 G2,YES,B.TECH,3RD',
-                'CS102,PYTHON,NPTL,0,1,0,G1 G2,NO,B.TECH,2ND',
+                'Department_name,Subject_id,Subject_Name,Sub_type,Theory_per_week,Tutorial_per_week,Lab_per_week,Allowed_groups,Course,Program Name,Semester',
+                'Computer Science & Engineering,AGCS-21301,DBMS,REGULAR,3,1,1,G1,B.TECH,Computer Science &Engineering,3rd',
+                'Computer Science & Engineering,AGCS-21302,Machine Learning,REGULAR,3,0,0,G1 G2,B.TECH,Computer Science &Engineering,3rd',
+                'Computer Science & Engineering,AGCS-21303,PYTHON,NPTEL,0,1,0,G1 G2 G3,B.TECH,Computer Science &Engineering,3rd',
+                'Computer Science & Engineering,AGCS-21304,OS,ELECTIVE,3,1,1,G1 G2 G3,B.TECH,ComputerEngineering,3rd',
             ]
         },
         'professors': {
             'filename': 'professors_template.csv',
             'rows': [
-                'professor_id,professor_name,max_workload_hours_per_week,specialization_subjects,SUB_CAN_TEACH_FOR_SPECIFIC_CLASS,block_time_slot(day/time)',
-                '# SUB_CAN_TEACH_FOR_SPECIFIC_CLASS: DEPT,COURSE,YEAR,SEC  (leave blank for all sections)',
-                '# block_time_slot: Day,HH:MM to HH:MM  e.g. Tuesday,9:50 to 11:30  |  use | to add multiple blocks',
-                'P001,Dr. Sharma,20,Machine Learning,"CSE,BTECH,2 YEAR,SEC-A","Tuesday,9:50 to 11:30"',
-                'P002,Dr. Kaur,18,OS Lab,,',
-                'P003,Prof. Singh,20,Machine Learning,,"Monday,9:00 to 9:50|Friday,2:00 to 2:50"',
+                'Department Name,Teacher_id,Teacher_name,Max_Workload_Hours_per_week,Subject Name,"Dept Name,Prog Name,Sem,Sec",Block_time_slot(day/time),Fixed_time_slot(day/time)',
+                'Computer Science & Engineering,CS001,Dr.Sandeep Kad,6,Machine Learning,"CSE,BTECH CSE,3rd,I","Tuesday,9:50 to 11:30","Wednesday,9:50 to 11:30"',
+                'Computer Science & Engineering,CS002,Er.Ajay Sharma,13,RDBMS,"CSE,BTECH CoE,2nd,II","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Tuesday,9:00 to 9:50"',
+                'Computer Science & Engineering,CS002,Er.Ajay Sharma,,Machine Learning,"EE,BTECH EE,3rd,III","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Wednesday,9:00 to 9:50"',
+                'Computer Science & Engineering,CS002,Er.Ajay Sharma,,OS Lab,"EE,BTECH CSE,3rd,I","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Thursday,9:00 to 9:50"',
+                ',,,,,Put the department name for which the teacher is teaching the subject,This block time is for specific teacher not mandatory for all,',
+                ',,,,,//in block time there shouldn\'t be any classes allocated to them | fixed time = the teacher must teach this subject then,,',
             ]
         },
         'rooms': {
             'filename': 'rooms_template.csv',
             'rows': [
-                'room_id,room_name,room_type,capacity,allowed_subjects',
-                'R001,Room 101,classroom,60,all',
-                'R002,CS Lab 1,lab,30,OS Lab,DBMS Lab',
-                'R003,CS Lab 2,lab,30,all',
-                'R004,Room 102,classroom,60,all',
+                'Department_name,Room_id,Room_name,Room_type,Capacity,Allowed_Subjects',
+                'Computer Science & Engineering,MB-201,Room 201,classroom,110,all',
+                'Computer Science & Engineering,R002,PL Lab 1,lab,40,OS',
+                ',Note:For one Subject Specify the Lab to be Conducted otherwise all in allowed_subjects',
             ]
         },
         'sections': {
             'filename': 'sections_template.csv',
             'rows': [
-                'department,year,section,group,fixed_room,course,free_day,class_count,section_start_time',
-                '# course: B.TECH / BE / M.TECH (leave blank to default to B.TECH)',
-                '# free_day: Monday / Tuesday / Wednesday / Thursday / Friday (leave blank for no holiday)',
-                '# class_count: number of students (used to auto-assign a room with enough capacity)',
-                '# section_start_time: HH:MM format e.g. 09:00 / 09:50 (leave blank to use department default)',
-                'CSE,2nd,A,G1,Room 101,B.TECH,Wednesday,25,09:00',
-                'CSE,2nd,A,G2,Room 101,B.TECH,Wednesday,22,09:00',
-                'CSE,2nd,B,G1,,B.TECH,Thursday,28,09:00',
-                'CSE,2nd,B,G2,,B.TECH,Thursday,30,09:50',
+                'Department,Semester,section,group,Fixed_room,Course,Program Name,Free_day,Class_Count,Day,Section_Start_time',
+                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Monday,9:00',
+                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Tuesday,9:50',
+                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Thursday,10:40',
+                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Friday,9:00',
+                'Computer Science & Engineering,3rd,II,G2,MB-301,B.TECH,ComputerEngineering,Thursday,22,,9:00',
+                'Note: if time is different on all five days then make multiple enteries in Day and Start Section time column else leave Day column empty incase of strt time is same all the five days',
             ]
         },
         'dept_settings': {
             'filename': 'dept_settings_template.csv',
             'rows': [
-                'department,lunch_start_time,lunch_end_time,department_start_time',
-                '# lunch_start_time / lunch_end_time: slot number (1-8) OR HH:MM start time of slot',
-                '# department_start_time: slot number (1-8) OR HH:MM start time (e.g. 9:00 or 10:40). Leave blank for default (9:00)',
-                'CSE,5,5,',
-                'IT,5,5,9:00',
-                'ECE,12:20,1:10,10:40',
+                'Department,Lunch_Start_time,Department_Start_time',
+                'Computer Science & Engineering,12:20,9:00',
             ]
         },
     }
@@ -2437,6 +2648,30 @@ def generate_timetable_smart(request):
         max_mins = prof.max_workload_hours_per_week * 60
         return max(0, max_mins - professor_mins[prof.id])
 
+    # ── Consecutive-session limit ──────────────────────────────────────────────
+    # A "session" is one taught block: 1 slot for theory/tutorial/NPTEL, 2 slots
+    # for a lab. A professor may have at most 2 sessions back-to-back on a day —
+    # i.e. never 3 classes in a row, and never 3 labs in a row (2 is allowed).
+    # Only real classes count here; blocked/fixed times don't (they aren't classes).
+    MAX_CONSECUTIVE_SESSIONS = 2
+    professor_sessions = defaultdict(list)   # (prof_id, day) → [(start, end), ...]
+
+    def prof_chain_ok(prof_id, day, start, end):
+        """True if adding a session at [start..end] keeps the longest run of
+        back-to-back sessions ≤ MAX_CONSECUTIVE_SESSIONS."""
+        intervals = sorted(professor_sessions[(prof_id, day)] + [(start, end)])
+        longest = run = 1
+        for i in range(1, len(intervals)):
+            if intervals[i][0] <= intervals[i - 1][1] + 1:   # contiguous
+                run += 1
+            else:
+                run = 1
+            longest = max(longest, run)
+        return longest <= MAX_CONSECUTIVE_SESSIONS
+
+    def add_prof_session(prof_id, day, start, end):
+        professor_sessions[(prof_id, day)].append((start, end))
+
     # ── Pick best eligible professor ──────────────────────────────────────────
     def pick_professor(subject, day, *slots, slot_type='theory'):
         """Return a professor who: is free on all slots, within workload, and eligible."""
@@ -2475,6 +2710,14 @@ def generate_timetable_smart(request):
     for rocc in RoomOccupiedTime.objects.select_related('room').all():
         for slot in rocc.blocked_slots():
             mark_room_busy(rocc.room, rocc.day, slot)
+
+    # ── Reserve professors at their fixed teaching slots ───────────────────────
+    # Fixed_time_slot (from the professors CSV) marks a time the teacher must teach
+    # a specific subject. For now we reserve the professor there so nothing else is
+    # scheduled for them at that time; hard-pinning the exact class is a follow-up.
+    for fx in ProfessorFixedSlot.objects.select_related('professor').all():
+        for slot in fx.blocked_slots():
+            mark_prof_busy(fx.professor_id, fx.day, slot)
 
     # ── Pre-block fixed rooms for non-theory use ──────────────────────────────
     # (Fixed rooms are reserved for their section's theory; no pre-blocking needed
@@ -2516,12 +2759,18 @@ def generate_timetable_smart(request):
         sec_starts = [sec.section_start_slot for sec in sections_in_pair if sec.section_start_slot]
         effective_start = min(sec_starts) if sec_starts else dept_start
         avail_slots = [s for s in SLOTS if s not in lunch_slots and s >= effective_start]
-        nptel_slots = [s for s in NPTEL_SLOTS if s not in lunch_slots and s >= effective_start]
+        # NPTEL must be STRICTLY after lunch: only slots later than the dept's last
+        # lunch slot. Order by NPTEL_SLOTS preference, then fill remaining post-lunch.
+        lunch_end_slot = max(lunch_slots) if lunch_slots else (dept_start + 3)
+        post_lunch = [s for s in avail_slots if s > lunch_end_slot]
+        nptel_slots = [s for s in NPTEL_SLOTS if s in post_lunch] + \
+                      [s for s in post_lunch if s not in NPTEL_SLOTS]
 
         theory_subjects = {}
         nptel_subjects = {}           # grouped by subject name — same logic as THEORY
         lab_subjects_by_section = defaultdict(list)
         tutorial_subjects_by_section = defaultdict(list)
+        elective_by_section = defaultdict(list)   # elective THEORY subjects (run in parallel)
 
         for sec in sections_in_pair:
             for subj in sec.subjects.all():
@@ -2532,6 +2781,12 @@ def generate_timetable_smart(request):
                 if ag == 'G1' and sec.group != 'G1':
                     continue
                 if ag == 'G2' and sec.group != 'G2':
+                    continue
+
+                # Elective lectures run in parallel across the semester's electives —
+                # handled by a dedicated pre-pass, so keep them out of normal theory.
+                if subj.subject_type == 'THEORY' and getattr(subj, 'is_elective', False):
+                    elective_by_section[sec.id].append(subj)
                     continue
 
                 if subj.subject_type == 'THEORY':
@@ -2562,103 +2817,170 @@ def generate_timetable_smart(request):
 
         pair_used_slots = {day: set() for day in w_days}
 
+        # ── ELECTIVE PARALLEL PRE-PASS ─────────────────────────────────────────
+        # A semester's electives are alternatives — a student takes ONE. So all of a
+        # section's electives run in the SAME time slot, each in a different room
+        # (or lab). We place them before regular theory so they get a clean slot.
+        # Whatever can't fit in parallel falls back to any free slot/room.
+        for sec in sections_in_pair:
+            electives = elective_by_section.get(sec.id, [])
+            if not electives:
+                continue
+            remaining = {e.id: e.lectures_per_week for e in electives}
+            esubj = {e.id: e for e in electives}
+            sec_days_used = set()
+
+            def _sec_busy(day, slot):
+                return (slot in pair_used_slots[day]
+                        or TimeSlot.objects.filter(section=sec, day=day, slot=slot).exists())
+
+            def _pick_elective_prof(e, day, slot, used_profs):
+                cands = [p for p in e.professors.all()
+                         if p.id not in used_profs and is_prof_free(p.id, day, slot)
+                         and prof_chain_ok(p.id, day, slot, slot)]
+                return min(cands, key=lambda p: professor_mins[p.id]) if cands else None
+
+            # Try to schedule one parallel elective period per day until all are placed.
+            max_periods = max(remaining.values()) if remaining else 0
+            for _ in range(max_periods * len(electives) + len(electives)):
+                todo = [esubj[i] for i, n in remaining.items() if n > 0]
+                if not todo:
+                    break
+                placed_here = []
+                # Pick the least-loaded day not yet used for an elective period.
+                day_order = sorted(
+                    [d for d in effective_w_days if d not in sec_days_used and not (sec.free_day and d == sec.free_day)],
+                    key=lambda d: len(pair_used_slots[d]))
+                if not day_order:
+                    day_order = [d for d in effective_w_days if not (sec.free_day and d == sec.free_day)]
+                for day in day_order:
+                    for slot in avail_slots:
+                        if _sec_busy(day, slot):
+                            continue
+                        used_rooms, used_profs, here = set(), set(), []
+                        for e in todo:
+                            prof = _pick_elective_prof(e, day, slot, used_profs)
+                            if not prof:
+                                continue
+                            room = (get_free_room([r for r in dept_classrooms if r.id not in used_rooms],
+                                                  day, slot, min_capacity=sec.class_count or 0)
+                                    or get_free_room([r for r in (dept_classrooms + dept_labs) if r.id not in used_rooms],
+                                                     day, slot))
+                            if not room:
+                                continue
+                            here.append((e, prof, room)); used_rooms.add(room.id); used_profs.add(prof.id)
+                        if here:
+                            placed_here = (day, slot, here)
+                            break
+                    if placed_here:
+                        break
+                if not placed_here:
+                    break
+                day, slot, here = placed_here
+                for (e, prof, room) in here:
+                    TimeSlot.objects.create(day=day, slot=slot, subject=e,
+                                            professor=prof, section=sec, room=room)
+                    mark_prof_busy(prof.id, day, slot)
+                    add_prof_session(prof.id, day, slot, slot)
+                    mark_room_busy(room, day, slot)
+                    remaining[e.id] -= 1
+                    total_created += 1
+                pair_used_slots[day].add(slot)
+                sec_days_used.add(day)
+            # Anything still unplaced (e.g. ran out of parallel-capable slots).
+            for i, n in remaining.items():
+                if n > 0:
+                    clash_warnings.append(
+                        f"Elective {esubj[i].name} ({sec}) — {n} session(s) could not be placed")
+
 
         # ── THEORY SCHEDULING — runs FIRST so G1+G2 get same slot/prof/room ──
         # Theory must be placed before labs to guarantee G1 and G2 attend the
         # same lecture together. Labs then avoid these theory slots via pair_used_slots.
+        #
+        # Each lecture is placed on the day (least-loaded first) where the professor
+        # has a non-consecutive free slot — spreading the load and never creating a
+        # 3rd class in a row. Only if NO day works do we relax the consecutive rule.
         theory_list = list(theory_subjects.values())
         theory_pool = []
         for t in theory_list:
             for _ in range(t['subj'].lectures_per_week):
                 theory_pool.append(t)
-        # No shuffle — deterministic; days assigned by least-loaded day first
 
-        # Fill slots across the full day — pre-lunch first, post-lunch as needed.
-        # Post-lunch slots (including slot 6) are used when pre-lunch is full.
-        PRE_LUNCH_CAP = len(avail_slots)  # allow theory to spill into post-lunch
-        theory_day_assignments = defaultdict(list)
+        def _find_slot_and_room(day, candidate_slots, t, max_cap):
+            """Return (slot, room) — try each slot until a room is found."""
+            for sl in candidate_slots:
+                for sec in t['sections']:
+                    if sec.fixed_room and is_room_free(sec.fixed_room.id, day, sl):
+                        return sl, sec.fixed_room
+                r = get_free_room(dept_classrooms, day, sl, min_capacity=max_cap)
+                if r:
+                    return sl, r
+                r = get_free_room(dept_classrooms, day, sl)
+                if r:
+                    return sl, r
+            return None, None
+
+        # Track how many theory lectures of a given unit already sit on a day so we
+        # don't pile the same subject onto one day.
+        theory_unit_day = defaultdict(int)   # (id(t), day) → count
+
         for t in theory_pool:
-            candidate_days = [d for d in effective_w_days if t not in theory_day_assignments[d]]
-            if not candidate_days:
-                candidate_days = effective_w_days[:]
-            # Prefer days that still have pre-lunch capacity (pack first, then overflow)
-            under_cap = [d for d in candidate_days if len(theory_day_assignments[d]) < PRE_LUNCH_CAP]
-            pool = under_cap if under_cap else candidate_days
-            # Among eligible days, pick the most loaded first (pack, not spread)
-            chosen_day = max(pool, key=lambda d: len(theory_day_assignments[d]))
-            theory_day_assignments[chosen_day].append(t)
-
-        for day in w_days:
-            for t in theory_day_assignments[day]:
-                subj = t['subj']
-                prof = pick_professor(subj, day, *[s for s in avail_slots if s not in pair_used_slots[day]])
-                if not prof:
-                    # Try any available slot
-                    for s in avail_slots:
-                        if s not in pair_used_slots[day]:
-                            prof = pick_professor(subj, day, s)
-                            if prof:
-                                break
-
-                free_slots = sorted(
-                    [s for s in avail_slots if s not in pair_used_slots[day]
-                     and is_prof_free(prof.id, day, s)]
-                ) if prof else []
-                if not free_slots or not prof:
-                    clash_warnings.append(f"{subj.name} on {day} — no free slot/professor")
+            subj = t['subj']
+            max_cap = max((s.class_count or 0) for s in t['sections'])
+            placed = False
+            # Days: avoid repeating this subject on a day, then least-loaded first.
+            day_order = sorted(
+                effective_w_days,
+                key=lambda d: (theory_unit_day[(id(t), d)], len(pair_used_slots[d])))
+            for day in day_order:
+                free_for_pick = [s for s in avail_slots if s not in pair_used_slots[day]]
+                if not free_for_pick:
                     continue
-
-                # First slot in sorted list = earliest available slot
-                chosen_slot = free_slots[0]
-
-                # Fixed room priority: use section's fixed room if set.
-                # If room is busy at chosen_slot, try the next available slot
-                # so we never leave a slot empty just due to room contention.
-                max_cap = max((s.class_count or 0) for s in t['sections'])
-
-                def _find_slot_and_room(candidate_slots):
-                    """Return (slot, room) — try each slot until room is found."""
-                    for sl in candidate_slots:
-                        # Try fixed room first
-                        for sec in t['sections']:
-                            if sec.fixed_room and is_room_free(sec.fixed_room.id, day, sl):
-                                return sl, sec.fixed_room
-                        # Try any classroom with sufficient capacity
-                        r = get_free_room(dept_classrooms, day, sl, min_capacity=max_cap)
-                        if r:
-                            return sl, r
-                        # Fallback: any classroom regardless of capacity
-                        r = get_free_room(dept_classrooms, day, sl)
-                        if r:
-                            return sl, r
-                    return None, None
-
-                remaining_slots = [s for s in free_slots if is_prof_free(prof.id, day, s)]
-                chosen_slot, cls_room = _find_slot_and_room(remaining_slots)
-
+                prof = pick_professor(subj, day, *free_for_pick)
+                if not prof:
+                    for s in free_for_pick:
+                        prof = pick_professor(subj, day, s)
+                        if prof:
+                            break
+                if not prof:
+                    continue
+                # HARD consecutive limit: only slots that keep the professor under
+                # 3-in-a-row. Never relaxed — an unplaceable lecture is warned, not
+                # forced into a 3rd consecutive slot.
+                cand = sorted(
+                    s for s in free_for_pick
+                    if is_prof_free(prof.id, day, s)
+                    and prof_chain_ok(prof.id, day, s, s))
+                chosen_slot, cls_room = _find_slot_and_room(day, cand, t, max_cap)
                 if chosen_slot is None:
-                    clash_warnings.append(f"{subj.name} on {day} — professor free but no room available")
                     continue
 
                 for sec in t['sections']:
                     sec_subj = t['subj_per_sec'].get(sec.id, subj)
-                    # Skip if section's group doesn't match
                     if subj.allowed_groups == 'G1' and sec.group != 'G1':
                         continue
                     if subj.allowed_groups == 'G2' and sec.group != 'G2':
                         continue
                     TimeSlot.objects.create(
                         day=day, slot=chosen_slot, subject=sec_subj,
-                        professor=prof, section=sec, room=cls_room
-                    )
+                        professor=prof, section=sec, room=cls_room)
                     total_created += 1
 
                 pair_used_slots[day].add(chosen_slot)
                 mark_prof_busy(prof.id, day, chosen_slot)
+                add_prof_session(prof.id, day, chosen_slot, chosen_slot)
+                theory_unit_day[(id(t), day)] += 1
                 if cls_room:
                     mark_room_busy(cls_room, day, chosen_slot)
                 else:
                     no_room_warn.append(f"No classroom for {subj.name} on {day}")
+                placed = True
+                break
+            if not placed:
+                clash_warnings.append(
+                    f"{subj.name} — could not place without exceeding 2 consecutive "
+                    f"classes / no free room (check room capacity)")
 
         # ── NPTEL SCHEDULING (slot 6 first, then 7,8,9 — all post-lunch) ────────
         # Both groups get the same professor, room, and time slot (mirrors THEORY logic).
@@ -2684,6 +3006,8 @@ def generate_timetable_smart(request):
                 prof = pick_professor(nsubj, day, s)
                 if not prof:
                     continue
+                if not prof_chain_ok(prof.id, day, s, s):
+                    continue   # would make 3 classes in a row for this professor
                 cls_room = get_free_room(dept_classrooms, day, s)
                 # Assign the same slot, professor, and room to ALL sections in the group
                 for sec in n['sections']:
@@ -2693,6 +3017,7 @@ def generate_timetable_smart(request):
                     total_created += 1
                 pair_used_slots[day].add(s)
                 mark_prof_busy(prof.id, day, s)
+                add_prof_session(prof.id, day, s, s)
                 if cls_room:
                     mark_room_busy(cls_room, day, s)
                 placed = True
@@ -2704,18 +3029,12 @@ def generate_timetable_smart(request):
         # This ensures both groups are always occupied simultaneously.
         #
         # Implementation:
-        #   1. Identify partner section (G1↔G2 within same pair).
-        #   2. When placing a lab (s1,s2), also place 2 tutorials for the
-        #      partner in the same slots. If partner has no pending tutorials,
-        #      fall back to normal independent scheduling.
-
-        def _get_partner(sec):
-            """Return the other group's section in this pair, or None."""
-            partner_group = 'G2' if sec.group == 'G1' else 'G1'
-            for s in sections_in_pair:
-                if s.group == partner_group:
-                    return s
-            return None
+        #   1. When a group has a 2-slot lab (s1,s2), fill those two hours with two
+        #      tutorials belonging to DIFFERENT groups OTHER than the lab group —
+        #      one tutorial per hour (s1 → group A, s2 → group B).
+        #   2. If only one other group is available it fills both hours (preferring a
+        #      different tutorial subject). If no other group has a pending tutorial,
+        #      the lab still proceeds alone.
 
         def _pending_tutorials(sec):
             """Return list of tutorial Subject objects not yet scheduled for sec.
@@ -2733,6 +3052,35 @@ def generate_timetable_smart(request):
                     pending.append(t)
             return pending
 
+        def _place_parallel_tutorial(day, slot, lab_sec, exclude_section_ids):
+            """Find and PLACE one tutorial at `slot` for a group OTHER than the lab
+            group (and not in exclude_section_ids). Creates the TimeSlot and marks the
+            professor/room busy immediately, so a second call for the other lab hour
+            sees these marks (keeping the consecutive-session limit correct).
+            Returns the section id used, or None if nothing could be placed.
+            """
+            for osec in (s for s in sections_in_pair
+                         if s.id != lab_sec.id and s.id not in exclude_section_ids):
+                if osec.free_day and day == osec.free_day:
+                    continue
+                used = {ts.slot for ts in TimeSlot.objects.filter(section=osec, day=day)}
+                if slot in used or slot in pair_used_slots[day]:
+                    continue
+                for tsub in _pending_tutorials(osec):
+                    tprof = pick_professor(tsub, day, slot)
+                    if not tprof or not prof_chain_ok(tprof.id, day, slot, slot):
+                        continue
+                    troom = get_free_room(dept_classrooms, day, slot,
+                                          min_capacity=osec.class_count or 0)
+                    TimeSlot.objects.create(day=day, slot=slot, subject=tsub,
+                                            professor=tprof, section=osec, room=troom)
+                    mark_prof_busy(tprof.id, day, slot, slot_mins=50)
+                    add_prof_session(tprof.id, day, slot, slot)
+                    if troom:
+                        mark_room_busy(troom, day, slot)
+                    return osec.id
+            return None
+
         for sec in sections_in_pair:
             lab_subjs = lab_subjects_by_section.get(sec.id, [])
             if not lab_subjs:
@@ -2742,7 +3090,6 @@ def generate_timetable_smart(request):
             sec_lab_days_used: set = set()
             is_g1 = sec.group == 'G1'
             preferred_starts = GROUP_ONE_LAB_STARTS if is_g1 else GROUP_TWO_LAB_STARTS
-            partner_sec = _get_partner(sec)
 
             for ls in lab_pool:
                 candidates = []
@@ -2777,48 +3124,11 @@ def generate_timetable_smart(request):
                     if s1 in sec_used or s2 in sec_used:
                         continue
 
-                    # ── Check partner availability for simultaneous tutorials ──
-                    # RULE: When G1 has a 2-slot lab (s1, s2), G2 should get tutorials
-                    # in the SAME time block. We try to fill both slots, but if only
-                    # 1 tutorial is pending we place it in s1 (lab still proceeds).
-                    # We only BLOCK the lab candidate if the partner's slots are already
-                    # occupied (clash) — not because of insufficient tutorials.
-                    partner_tuts = []
-                    if partner_sec:
-                        # Re-fetch partner used slots fresh (avoid stale data)
-                        p_used = {ts.slot for ts in TimeSlot.objects.filter(section=partner_sec, day=day)}
-                        if s1 in p_used or s2 in p_used:
-                            # Partner already busy in this block — skip this candidate
-                            continue
-                        pending = _pending_tutorials(partner_sec)
-                        if len(pending) >= 2:
-                            # Best case: 2 different tutorials for s1 and s2
-                            t1, t2 = pending[0], pending[1]
-                            p1 = pick_professor(t1, day, s1)
-                            p2 = pick_professor(t2, day, s2)
-                            if p1 and p2:
-                                partner_tuts = [(t1, p1, s1), (t2, p2, s2)]
-                            elif p1:
-                                # t2 prof unavailable — repeat t1 in s2 as fallback
-                                p2 = pick_professor(t1, day, s2)
-                                if p2:
-                                    partner_tuts = [(t1, p1, s1), (t1, p2, s2)]
-                                else:
-                                    partner_tuts = [(t1, p1, s1)]
-                        if not partner_tuts and len(pending) >= 1:
-                            # Only 1 tutorial subject pending — place same subject in BOTH s1 and s2
-                            # so the partner stays occupied the full 2-slot lab duration
-                            t1 = pending[0]
-                            p1 = pick_professor(t1, day, s1)
-                            p2 = pick_professor(t1, day, s2)
-                            if p1 and p2:
-                                partner_tuts = [(t1, p1, s1), (t1, p2, s2)]
-                            elif p1:
-                                partner_tuts = [(t1, p1, s1)]
-                        # If no tutorials pending at all, lab still proceeds
-
                     prof = pick_professor(ls, day, s1, s2, slot_type='lab')
                     if not prof:
+                        continue
+                    # No 3 labs/classes in a row: a lab is one 2-slot session.
+                    if not prof_chain_ok(prof.id, day, s1, s2):
                         continue
 
                     # Pinned lab room
@@ -2838,6 +3148,7 @@ def generate_timetable_smart(request):
                                             professor=prof, section=sec, room=lab_room)
                     mark_prof_busy(prof.id, day, s1, slot_mins=100)
                     mark_prof_busy(prof.id, day, s2, slot_mins=0)
+                    add_prof_session(prof.id, day, s1, s2)   # one 2-slot lab session
                     sec_lab_days_used.add(day)
                     if lab_room:
                         mark_room_busy(lab_room, day, s1, 2)
@@ -2845,15 +3156,18 @@ def generate_timetable_smart(request):
                         no_room_warn.append(f"No lab room for {ls.name} ({sec})")
                     total_created += 2
 
-                    # ── Place partner tutorials simultaneously ─────────────────
-                    for (tsubj, tprof, tslot) in partner_tuts:
-                        troom = get_free_room(dept_classrooms, day, tslot,
-                                              min_capacity=partner_sec.class_count or 0)
-                        TimeSlot.objects.create(day=day, slot=tslot, subject=tsubj,
-                                                professor=tprof, section=partner_sec, room=troom)
-                        mark_prof_busy(tprof.id, day, tslot, slot_mins=50)  # tutorial = 50 min
-                        if troom:
-                            mark_room_busy(troom, day, tslot)
+                    # ── Parallel tutorials: a DIFFERENT non-lab group per hour ────
+                    # Placed one at a time so the 2nd sees the 1st (consecutive-safe).
+                    used_secs = set()
+                    a_id = _place_parallel_tutorial(day, s1, sec, used_secs)
+                    if a_id is not None:
+                        used_secs.add(a_id)
+                        total_created += 1
+                    # s2 → prefer a different group; fall back to the same group.
+                    b_id = _place_parallel_tutorial(day, s2, sec, used_secs)
+                    if b_id is None:
+                        b_id = _place_parallel_tutorial(day, s2, sec, set())
+                    if b_id is not None:
                         total_created += 1
 
                     placed = True
@@ -2906,11 +3220,14 @@ def generate_timetable_smart(request):
                     prof = pick_professor(tsubj, day, s)
                     if not prof:
                         continue
+                    if not prof_chain_ok(prof.id, day, s, s):
+                        continue   # would make 3 classes in a row for this professor
                     cls_room = get_free_room(dept_classrooms, day, s,
                                              min_capacity=sec.class_count or 0)
                     TimeSlot.objects.create(day=day, slot=s, subject=tsubj,
                                             professor=prof, section=sec, room=cls_room)
                     mark_prof_busy(prof.id, day, s)
+                    add_prof_session(prof.id, day, s, s)
                     if cls_room:
                         mark_room_busy(cls_room, day, s)
                     total_created += 1
@@ -2987,6 +3304,8 @@ def dept_settings(request, dept_id):
     """Edit department settings (lunch time, working days, lecture duration)."""
     from .forms import DepartmentSettingsForm
     dept = get_object_or_404(Department, id=dept_id)
+    guard = _dept_guard(request, dept)
+    if guard: return guard
     try:
         instance = dept.settings
     except DepartmentSettings.DoesNotExist:

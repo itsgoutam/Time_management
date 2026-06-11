@@ -101,6 +101,10 @@ function setDuration(type) {
     note.textContent = '📡 NPTEL selected — 50 min, scheduled ONLY after 2:00 PM (slots 6–7)';
     note.style.color = '#b45309';
     nptelNote.classList.add('visible');
+  } else if (type === 'ELECTIVE') {
+    d.value = 50;
+    note.textContent = '🔀 Elective selected — 50 min. All electives of a semester run in the SAME slot (different rooms) so a student picks one.';
+    note.style.color = '#7c3aed';
   } else {
     d.value = 50;
     note.textContent = '📘 Theory selected — 50 min (1 slot), shared across all groups in a section';

@@ -82,6 +82,12 @@ main{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:4
           {% if form.name.errors %}<div class="error-msg">{{ form.name.errors|join:", " }}</div>{% endif %}
         </div>
         <div class="field">
+          <label>{{ form.professor_id.label }}</label>
+          {{ form.professor_id }}
+          <div class="help">{{ form.professor_id.help_text }}</div>
+          {% if form.professor_id.errors %}<div class="error-msg">{{ form.professor_id.errors|join:", " }}</div>{% endif %}
+        </div>
+        <div class="field">
           <label>{{ form.email.label }}</label>
           {{ form.email }}
           {% if form.email.errors %}<div class="error-msg">{{ form.email.errors|join:", " }}</div>{% endif %}

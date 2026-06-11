@@ -1,0 +1,27 @@
+Department Name,Teacher_id,Teacher_name,Max_Workload_Hours_per_week,Subject Name,"Dept Name,Prog Name,Sem,Sec",Block_time_slot(day/time),Fixed_time_slot(day/time)
+Computer Science & Engineering,CS001,Dr. Sandeep Kad,6,Machine Learning,"CSE,BTECH CSE,3rd,I","Tuesday,9:50 to 11:30","Wednesday,9:50 to 11:30"
+Computer Science & Engineering,CS002,Er. Ajay Sharma,13,RDBMS,"CSE,BTECH CSE,2nd,II","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Tuesday,9:00 to 9:50"
+Computer Science & Engineering,CS002,Er. Ajay Sharma,,Machine Learning,"CSE,BTECH CSE,3rd,III","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Wednesday,9:00 to 9:50"
+Computer Science & Engineering,CS002,Er. Ajay Sharma,,OS Lab,"CSE,BTECH CSE,3rd,I","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Thursday,9:00 to 9:50"
+Computer Science & Engineering,CS003,Dr. Priya Mehta,12,DBMS,"CSE,BTECH CSE,3rd,I",,"Monday,10:40 to 11:30"
+Computer Science & Engineering,CS003,Dr. Priya Mehta,,DBMS,"CSE,BTECH CSE,3rd,II",,"Tuesday,10:40 to 11:30"
+Computer Science & Engineering,CS004,Er. Rohit Verma,14,OS,"CSE,BTECH CSE,3rd,I","Wednesday,9:00 to 10:40",
+Computer Science & Engineering,CS004,Er. Rohit Verma,,OS,"CSE,BTECH CSE,3rd,II","Wednesday,9:00 to 10:40",
+Computer Science & Engineering,CS005,Dr. Neha Gupta,10,Computer Networks,"CSE,BTECH CSE,3rd,I",,
+Computer Science & Engineering,CS005,Dr. Neha Gupta,,Computer Networks,"CSE,BTECH CSE,3rd,II",,
+Computer Science & Engineering,CS006,Dr. Amit Soni,8,Compiler Design,"CSE,BTECH CSE,5th,I","Friday,9:00 to 9:50","Monday,9:00 to 9:50"
+Computer Science & Engineering,CS006,Dr. Amit Soni,,Compiler Design,"CSE,BTECH CSE,5th,II","Friday,9:00 to 9:50","Monday,10:40 to 11:30"
+Computer Science & Engineering,CS007,Er. Kavita Rani,12,Artificial Intelligence,"CSE,BTECH CSE,5th,I",,"Wednesday,9:00 to 9:50"
+Computer Science & Engineering,CS007,Er. Kavita Rani,,Artificial Intelligence,"CSE,BTECH CSE,5th,II",,"Wednesday,10:40 to 11:30"
+Computer Science & Engineering,CS008,Dr. Suresh Kumar,10,Python,"CSE,BTECH CSE,3rd,I",,"Thursday,11:30 to 12:20"
+Computer Science & Engineering,CS008,Dr. Suresh Kumar,,Python,"CSE,BTECH CSE,3rd,II",,"Thursday,11:30 to 12:20"
+Computer Science & Engineering,CS008,Dr. Suresh Kumar,,Python,"CSE,BTECH CSE,3rd,III",,"Thursday,11:30 to 12:20"
+Electronics & Communication Engineering,EC001,Dr. Ramesh Bhatia,12,Signals & Systems,"ECE,BTECH ECE,3rd,I",,"Monday,9:00 to 9:50"
+Electronics & Communication Engineering,EC001,Dr. Ramesh Bhatia,,Signals & Systems,"ECE,BTECH ECE,3rd,II",,"Monday,10:40 to 11:30"
+Electronics & Communication Engineering,EC002,Er. Sunita Patel,10,Digital Electronics,"ECE,BTECH ECE,3rd,I","Friday,2:00 to 2:50","Tuesday,9:00 to 9:50"
+Electronics & Communication Engineering,EC002,Er. Sunita Patel,,Digital Electronics,"ECE,BTECH ECE,3rd,II","Friday,2:00 to 2:50","Tuesday,10:40 to 11:30"
+Electronics & Communication Engineering,EC003,Dr. Vivek Sharma,8,Electromagnetic Fields,"ECE,BTECH ECE,3rd,I",,"Wednesday,11:30 to 12:20"
+Electrical Engineering,EE001,Dr. Anita Singh,12,Power Systems,"EE,BTECH EE,3rd,I",,"Monday,9:00 to 9:50"
+Electrical Engineering,EE002,Er. Manoj Tiwari,10,Control Systems,"EE,BTECH EE,3rd,I","Thursday,9:00 to 9:50","Tuesday,9:00 to 9:50"
+Mechanical Engineering,ME001,Dr. Harish Nair,12,Thermodynamics,"ME,BTECH ME,3rd,I",,"Monday,9:30 to 10:20"
+Mechanical Engineering,ME002,Er. Pooja Joshi,10,Fluid Mechanics,"ME,BTECH ME,3rd,I","Wednesday,9:30 to 10:20","Friday,9:30 to 10:20"

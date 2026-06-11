@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Accounts — EduScheduler</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f4f5f7;--surface:#fff;--border:#e0e3ea;--blue:#1565c0;--blue-dark:#0d47a1;
+  --blue-light:#e3f0ff;--red:#d32f2f;--green:#16a34a;--text:#1a1f36;--muted:#5b6b86}
+body{font-family:'Roboto',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:0}
+.topbar{background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:#fff;padding:16px 28px;
+  display:flex;align-items:center;justify-content:space-between}
+.topbar h1{font-size:19px;font-weight:700}
+.topbar a{color:#fff;text-decoration:none;font-size:13px;font-weight:600;opacity:.92}
+.topbar a:hover{opacity:1;text-decoration:underline}
+.wrap{max-width:920px;margin:26px auto;padding:0 20px;display:grid;gap:22px;grid-template-columns:1fr 1.3fr}
+@media(max-width:760px){.wrap{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.panel h2{font-size:15px;font-weight:700;padding:15px 18px;border-bottom:1px solid var(--border);background:#fafbfe}
+.panel .inner{padding:18px}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:12px 0 6px}
+input,select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-light)}
+.btn{margin-top:18px;padding:11px 16px;border:none;border-radius:9px;background:var(--blue);color:#fff;
+  font-weight:600;font-size:14px;cursor:pointer}
+.btn:hover{background:var(--blue-dark)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:11px 14px;text-align:left;font-size:13.5px;border-bottom:1px solid var(--border)}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:#fafbfe}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.badge.admin{background:#ede7ff;color:#5b21b6}
+.badge.dept{background:var(--blue-light);color:var(--blue-dark)}
+.del{color:var(--red);text-decoration:none;font-weight:600;font-size:12.5px}
+.del:hover{text-decoration:underline}
+.msg{padding:10px 14px;border-radius:9px;font-size:13px;margin:0 20px 4px;max-width:920px}
+.msgwrap{max-width:920px;margin:16px auto 0;padding:0 20px}
+.msg.error{background:#fde8e8;color:#9b1c1c}.msg.success{background:#e6f6ec;color:#13653a}.msg.info{background:var(--blue-light);color:var(--blue-dark)}
+.muted{color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>👤 Manage Accounts</h1>
+  <div>
+    <a href="{% url 'dashboard' %}">← Dashboard</a>
+    <a href="{% url 'logout' %}">Log out ({{ auth_display_name }})</a>
+  </div>
+</div>
+
+{% if messages %}
+<div class="msgwrap">
+  {% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="wrap">
+  <div class="panel">
+    <h2>➕ Add Department Admin</h2>
+    <div class="inner">
+      <form method="post" action="{% url 'create_account' %}">
+        {% csrf_token %}
+        <label>Username</label>
+        <input type="text" name="username" placeholder="e.g. cse_admin" required>
+        <label>Password</label>
+        <input type="text" name="password" placeholder="set a password" required>
+        <label>Department</label>
+        <select name="department" required>
+          <option value="">— Select department —</option>
+          {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select>
+        <button class="btn" type="submit">Create account</button>
+        {% if not departments %}<p class="muted" style="margin-top:10px">Add a department first.</p>{% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>All accounts</h2>
+    <table>
+      <thead><tr><th>Username</th><th>Role</th><th>Department</th><th></th></tr></thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td><b>{{ a.username }}</b></td>
+          <td>{% if a.is_admin %}<span class="badge admin">Admin</span>{% else %}<span class="badge dept">Dept Admin</span>{% endif %}</td>
+          <td>{{ a.department.name|default:"— all —" }}</td>
+          <td>
+            {% if a.is_admin %}<span class="muted">protected</span>
+            {% else %}
+            <form method="post" action="{% url 'delete_account' a.id %}" onsubmit="return confirm('Remove {{ a.username }}?');" style="display:inline">
+              {% csrf_token %}<button class="del" type="submit" style="background:none;border:none;cursor:pointer">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="muted" style="padding:20px;text-align:center">No accounts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

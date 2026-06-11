@@ -1,0 +1,14 @@
+Department_name,Room_id,Room_name,Room_type,Capacity,Allowed_Subjects
+Computer Science & Engineering,MB-201,Room 201,classroom,110,all
+Computer Science & Engineering,MB-202,Room 202,classroom,110,all
+Computer Science & Engineering,MB-203,Room 203,classroom,80,all
+Computer Science & Engineering,CS-LAB1,CS Lab 1,lab,40,OS Lab
+Computer Science & Engineering,CS-LAB2,CS Lab 2,lab,40,DBMS Lab
+Computer Science & Engineering,CS-LAB3,PY Lab,lab,40,Python Lab
+Electronics & Communication Engineering,EC-301,EC Room 301,classroom,90,all
+Electronics & Communication Engineering,EC-302,EC Room 302,classroom,90,all
+Electronics & Communication Engineering,EC-LAB1,EC Lab 1,lab,36,Circuits Lab
+Electrical Engineering,EE-101,EE Room 101,classroom,100,all
+Electrical Engineering,EE-LAB1,EE Lab 1,lab,40,Power Lab
+Mechanical Engineering,ME-201,ME Room 201,classroom,80,all
+Mechanical Engineering,ME-LAB1,ME Lab 1,lab,30,Workshop Lab

@@ -144,6 +144,12 @@ tbody tr:hover td:first-child{background:#e8effe;}
 .cell-tut    {background:var(--tut-bg);  border:1.5px solid var(--tut-border);}
 .cell-nptel  {background:var(--nptel-bg);border:1.5px solid var(--nptel-border);}
 .cell-occ    {background:var(--occ-bg);  border:1.5px solid var(--occ-border);}
+.cell-fixed  {background:#e0e7ff;        border:1.5px dashed #6366f1;}
+.cell-fixed  .type-badge{background:#c7d2fe;color:#3730a3;}
+.cell-fixed  .cell-name{color:#3730a3;font-size:.72rem;}
+.cell-elec   {background:#fff3e6;        border:1.5px dashed #fb923c;}
+.cell-elec   .type-badge{background:#ffedd5;color:#c2410c;}
+.cell-elec   .cell-name{color:#c2410c;}
 .cell-empty  {background:#f8faff;        border:1.5px solid #eef2ff;}
 .cell-lunch  {background:var(--lunch-bg);border:1.5px solid var(--lunch-border);align-items:center;justify-content:center;}
 
@@ -194,12 +200,14 @@ tbody tr:hover td:first-child{background:#e8effe;}
     <span class="brand-text"></span>
   </div>
   <div class="nav-links">
-    <a href="/">← Dashboard</a>
+    {% if auth_is_staff %}<a href="/">← Dashboard</a>{% endif %}
     <a href="/professor/{{ professor.id }}/csv/" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700;">⬇ CSV</a>
     <a href="/professor/{{ professor.id }}/pdf/" style="background:#7c3aed;color:#fff;border-color:#7c3aed;font-weight:700;">⬇ PDF</a>
+    {% if auth_is_staff %}
     <a href="/generate-smart/">⚡ Regenerate</a>
-      <a href="/workload-report/" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
-    
+    <a href="/workload-report/" style="background:rgba(124,58,237,.7);color:#fff;border-color:rgba(124,58,237,.5);">📋 Workload</a>
+    {% endif %}
+    {% if auth_role == 'PROFESSOR' %}<a href="/logout/" style="background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.35);">⎋ Logout</a>{% endif %}
   </div>
 </nav>
 <main>
@@ -303,12 +311,34 @@ tbody tr:hover td:first-child{background:#e8effe;}
     {% endif %}
   </div>
 
+  {% if fixed_slots %}
+  <!-- Fixed Teaching Slots Panel -->
+  <div class="action-bar"><h2>📌 Fixed Teaching Slots</h2></div>
+  <div class="occ-panel">
+    <div class="occ-panel-header">
+      <h3>🔒 Must teach these subjects at these times (from CSV)</h3>
+      <span style="font-size:.75rem;color:#0d47a1;">The professor is reserved at these times during generation</span>
+    </div>
+    <div class="occ-list">
+      {% for fx in fixed_slots %}
+      <div class="occ-item" style="border-left-color:var(--blue);">
+        <div class="occ-day">{{ fx.day }}</div>
+        <div class="occ-time">🕐 {{ fx.get_time_range_display }}</div>
+        <div><span class="occ-type">📚 {{ fx.subject_name|default:"(subject)" }}</span></div>
+        {% if fx.section_restriction %}<div class="occ-desc">{{ fx.section_restriction }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Legend -->
   <div class="legend">
     <div class="leg"><div class="ld" style="background:var(--blue);border-radius:3px;"></div>Theory — shared slot</div>
     <div class="leg"><div class="ld" style="background:var(--green);border-radius:3px;"></div>Lab — 2-hour block</div>
     <div class="leg"><div class="ld" style="background:#7c3aed;border-radius:3px;"></div>Tutorial — 1 hr</div>
     <div class="leg"><div class="ld" style="background:var(--amber);border-radius:3px;"></div>NPTEL — after 2 PM</div>
+    <div class="leg"><div class="ld" style="background:#6366f1;border-radius:3px;"></div>Fixed — Must teach (from CSV)</div>
     <div class="leg"><div class="ld" style="background:var(--red);border-radius:3px;"></div>Blocked — Not available</div>
     <div class="leg"><div class="ld" style="background:#ea580c;border-radius:3px;"></div>Break (1:10–2:00)</div>
     <div class="leg"><div class="ld" style="background:#dce3f5;border-radius:3px;"></div>Free</div>
@@ -342,8 +372,8 @@ tbody tr:hover td:first-child{background:#e8effe;}
                 {% if cell.entries %}
                   {% with e=cell.entries.0 %}
                   {% with st=e.ts.subject.subject_type %}
-                  <div class="cell {% if st == 'LAB' %}cell-lab{% elif st == 'TUTORIAL' %}cell-tut{% elif st == 'NPTEL' %}cell-nptel{% else %}cell-theory{% endif %}">
-                    <span class="type-badge">{% if st == 'LAB' %}🧪 LAB{% elif st == 'TUTORIAL' %}📝 TUT{% elif st == 'NPTEL' %}📡 NPTEL{% else %}📘 THEORY{% endif %}</span>
+                  <div class="cell {% if e.ts.subject.is_elective %}cell-elec{% elif st == 'LAB' %}cell-lab{% elif st == 'TUTORIAL' %}cell-tut{% elif st == 'NPTEL' %}cell-nptel{% else %}cell-theory{% endif %}">
+                    <span class="type-badge">{% if e.ts.subject.is_elective %}🔀 ELECTIVE{% elif st == 'LAB' %}🧪 LAB{% elif st == 'TUTORIAL' %}📝 TUT{% elif st == 'NPTEL' %}📡 NPTEL{% else %}📘 THEORY{% endif %}</span>
                     <div class="cell-name">{{ e.ts.subject.name }}</div>
                     <div class="cell-class">
                       {% for sec in e.sections %}
@@ -361,6 +391,12 @@ tbody tr:hover td:first-child{background:#e8effe;}
                   </div>
                   {% endwith %}
                   {% endwith %}
+                {% elif cell.fixed %}
+                  <div class="cell cell-fixed">
+                    <span class="type-badge">📌 FIXED</span>
+                    <div class="cell-name">{{ cell.fixed.subject_name|default:"Fixed class" }}</div>
+                    {% if cell.fixed.section_restriction %}<div class="cell-class"><span>{{ cell.fixed.section_restriction }}</span></div>{% endif %}
+                  </div>
                 {% elif cell.occupied %}
                   <div class="cell cell-occ">
                     <span class="type-badge">🚫 BUSY</span>

@@ -1,0 +1,17 @@
+Department,Semester,section,group,Fixed_room,Course,Program Name,Free_day,Class_Count,Day,Section_Start_time
+Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science & Engineering,Wednesday,25,Monday,9:00
+Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science & Engineering,Wednesday,25,Tuesday,9:50
+Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science & Engineering,Wednesday,25,Thursday,10:40
+Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science & Engineering,Wednesday,25,Friday,9:00
+Computer Science & Engineering,3rd,II,G2,MB-301,B.TECH,Computer Science & Engineering,Thursday,22,,9:00
+Computer Science & Engineering,3rd,III,G3,MB-203,B.TECH,Computer Science & Engineering,Friday,28,Monday,9:50
+Computer Science & Engineering,3rd,III,G3,MB-203,B.TECH,Computer Science & Engineering,Friday,28,Tuesday,9:00
+Computer Science & Engineering,3rd,III,G3,MB-203,B.TECH,Computer Science & Engineering,Friday,28,Thursday,9:00
+Computer Science & Engineering,5th,I,G1,MB-201,B.TECH,Computer Science & Engineering,Saturday,24,,9:00
+Computer Science & Engineering,5th,II,G2,MB-202,B.TECH,Computer Science & Engineering,Saturday,26,,9:00
+Electronics & Communication Engineering,3rd,I,G1,EC-301,B.TECH,Electronics & Communication Engineering,Wednesday,30,,9:00
+Electronics & Communication Engineering,3rd,II,G2,EC-302,B.TECH,Electronics & Communication Engineering,Thursday,28,Monday,9:50
+Electronics & Communication Engineering,3rd,II,G2,EC-302,B.TECH,Electronics & Communication Engineering,Thursday,28,Tuesday,9:00
+Electronics & Communication Engineering,3rd,II,G2,EC-302,B.TECH,Electronics & Communication Engineering,Thursday,28,Friday,9:00
+Electrical Engineering,3rd,I,G1,EE-101,B.TECH,Electrical Engineering,Friday,32,,9:00
+Mechanical Engineering,3rd,I,G1,ME-201,B.TECH,Mechanical Engineering,Wednesday,35,,9:30

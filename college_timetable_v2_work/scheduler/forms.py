@@ -59,7 +59,7 @@ class SectionForm(forms.ModelForm):
         labels = {
             'section_name': 'Section',
             'group': 'Group',
-            'custom_year': 'Custom Year Name',
+            'custom_year': 'Custom Semester Label',
             'custom_section_name': 'Custom Section Name',
             'fixed_room': 'Fixed Classroom (optional)',
             'free_day': 'Free Day / Holiday',
@@ -72,7 +72,7 @@ class SectionForm(forms.ModelForm):
             'free_day': forms.Select(attrs={'class': 'form-select'}),
             'section_start_slot': forms.Select(attrs={'class': 'form-select'}),
             'custom_year': forms.TextInput(attrs={
-                'placeholder': 'e.g. 5th Year, 6th Semester',
+                'placeholder': 'e.g. Sem 9, Summer Term',
                 'id': 'id_custom_year',
             }),
             'custom_section_name': forms.TextInput(attrs={
@@ -92,15 +92,49 @@ class SectionForm(forms.ModelForm):
         self.fields['free_day'].required = False
         self.fields['section_start_slot'].required = False
         self.fields['section_start_slot'].empty_label = '— Use department default —'
+        # In Add mode the groups come from the 'groups' checkboxes (one section per
+        # group), not the single 'group' field — so it must not be required, or the
+        # form never validates and the "Add" button silently does nothing.
+        self.fields['group'].required = False
+
+        # Populate the Section dropdown with the section names that actually exist
+        # (from the uploaded CSV) — e.g. I, II, III — plus the standard A–E and a
+        # "Custom" option. Selecting an existing name lets you add a group to it.
+        existing = []
+        for s in Section.objects.all():
+            eff = s.get_effective_section_name()
+            if eff and eff != 'Custom':
+                existing.append(eff)
+        opts, seen = [], set()
+        for name in sorted(set(existing)) + ['A', 'B', 'C', 'D', 'E']:
+            if name and name not in seen:
+                seen.add(name)
+                opts.append((name, f'Section {name}'))
+        opts.append(('CUSTOM', '➕ Custom (type a new name)'))
+        self.fields['section_name'].choices = opts
+        # When editing a custom-named section, pre-select its effective name.
+        inst = getattr(self, 'instance', None)
+        if inst and inst.pk and inst.section_name == 'CUSTOM' and inst.custom_section_name:
+            if inst.custom_section_name not in seen:
+                opts.insert(0, (inst.custom_section_name, f'Section {inst.custom_section_name}'))
+                self.fields['section_name'].choices = opts
+            self.initial['section_name'] = inst.custom_section_name
 
     def clean(self):
         cleaned_data = super().clean()
+        # A picked existing/custom section name (e.g. 'I', 'II') is stored as
+        # CUSTOM + that name, matching how the CSV importer stores it. This also
+        # keeps it valid against the model field's choices (A–E / CUSTOM).
+        chosen = cleaned_data.get('section_name')
+        if chosen and chosen not in ('A', 'B', 'C', 'D', 'E', 'CUSTOM'):
+            cleaned_data['custom_section_name'] = chosen
+            cleaned_data['section_name'] = 'CUSTOM'
         year = cleaned_data.get('year')
         custom_year = (cleaned_data.get('custom_year') or '').strip()
         section_name = cleaned_data.get('section_name')
         custom_section_name = (cleaned_data.get('custom_section_name') or '').strip()
         if year == 'CUSTOM' and not custom_year:
-            self.add_error('custom_year', 'Please enter a custom year name.')
+            self.add_error('custom_year', 'Please enter a custom semester label.')
         if section_name == 'CUSTOM' and not custom_section_name:
             self.add_error('custom_section_name', 'Please enter a custom section name.')
         return cleaned_data
@@ -113,6 +147,7 @@ class SubjectForm(forms.ModelForm):
             ('LAB', 'Lab (100 min — 2 consecutive slots)'),
             ('TUTORIAL', 'Tutorial (50 min — per group)'),
             ('NPTEL', 'NPTEL (50 min — after 2:00 PM only)'),
+            ('ELECTIVE', 'Elective (50 min — runs parallel with other electives)'),
         ],
         widget=forms.Select(attrs={'id': 'id_subject_type', 'onchange': 'setDuration(this.value)'})
     )
@@ -162,6 +197,10 @@ class SubjectForm(forms.ModelForm):
                 self.fields['duration'].initial = 100
             else:
                 self.fields['duration'].initial = 50
+            # An elective is stored as a 50-min THEORY with is_elective=True — show
+            # it as "Elective" in the dropdown when editing.
+            if getattr(self.instance, 'is_elective', False):
+                self.fields['subject_type'].initial = 'ELECTIVE'
             # Pre-select the existing section for edit view
             if self.instance.section:
                 self.fields['sections'].initial = [self.instance.section.pk]
@@ -169,6 +208,18 @@ class SubjectForm(forms.ModelForm):
             first_prof = self.instance.professors.first()
             if first_prof:
                 self.fields['professor'].initial = first_prof.pk
+
+    def clean(self):
+        cleaned = super().clean()
+        # "Elective" is stored as a 50-min THEORY subject flagged is_elective, so it
+        # runs in parallel with the semester's other electives. Remap before the
+        # model validates subject_type against its (THEORY/LAB/TUTORIAL/NPTEL) choices.
+        is_elective = cleaned.get('subject_type') == 'ELECTIVE'
+        cleaned['is_elective'] = is_elective
+        if is_elective:
+            cleaned['subject_type'] = 'THEORY'
+            cleaned['duration'] = 50
+        return cleaned
 
 
 class ProfessorOccupiedTimeForm(forms.ModelForm):
@@ -195,9 +246,10 @@ class ProfessorOccupiedTimeForm(forms.ModelForm):
 class ProfessorForm(forms.ModelForm):
     class Meta:
         model = Professor
-        fields = ['name', 'email', 'max_workload_hours_per_week', 'specialization_subjects']
+        fields = ['name', 'professor_id', 'email', 'max_workload_hours_per_week', 'specialization_subjects']
         widgets = {
             'name': forms.TextInput(attrs={'placeholder': 'e.g. Dr. Sharma'}),
+            'professor_id': forms.TextInput(attrs={'placeholder': 'e.g. CS001'}),
             'email': forms.EmailInput(attrs={'placeholder': 'e.g. sharma@college.edu'}),
             'max_workload_hours_per_week': forms.NumberInput(attrs={'min': 1, 'max': 40, 'placeholder': '20'}),
             'specialization_subjects': forms.Textarea(attrs={
@@ -206,9 +258,17 @@ class ProfessorForm(forms.ModelForm):
             }),
         }
         labels = {
+            'professor_id': 'Teacher ID (login password)',
             'max_workload_hours_per_week': 'Max Workload (hours/week)',
             'specialization_subjects': 'Specialization Subjects (optional)',
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['professor_id'].required = False
+        self.fields['professor_id'].help_text = (
+            "The professor signs in with their name and this ID as the password. "
+            "Must be unique enough to identify them.")
 
 
 class RoomOccupiedTimeForm(forms.ModelForm):
@@ -271,27 +331,27 @@ class CSVUploadForm(forms.Form):
     subjects_csv = forms.FileField(
         required=False, label='📚 Subjects CSV',
         widget=forms.ClearableFileInput(attrs={'accept': '.csv'}),
-        help_text='Fields: subject_id, subject_name, subject_type, lectures_per_week, allowed_groups, specialization_required'
+        help_text='Fields: Department_name, Subject_id, Subject_Name, Sub_type (REGULAR/ELECTIVE/NPTEL), Theory_per_week, Tutorial_per_week, Lab_per_week, Allowed_groups, Course, Program Name, Semester'
     )
     professors_csv = forms.FileField(
         required=False, label='👨‍🏫 Professors CSV',
         widget=forms.ClearableFileInput(attrs={'accept': '.csv'}),
-        help_text='Fields: professor_id, professor_name, max_workload_hours_per_week, specialization_subjects, SUB_CAN_TEACH_FOR_SPECIFIC_CLASS, block_time_slot(day/time)'
+        help_text='Fields: Department Name, Teacher_id, Teacher_name, Max_Workload_Hours_per_week, Subject Name, "Dept Name,Prog Name,Sem,Sec", Block_time_slot(day/time), Fixed_time_slot(day/time)'
     )
     rooms_csv = forms.FileField(
         required=False, label='🚪 Rooms CSV',
         widget=forms.ClearableFileInput(attrs={'accept': '.csv'}),
-        help_text='Fields: room_id, room_name, room_type, capacity, allowed_subjects'
+        help_text='Fields: Department_name, Room_id, Room_name, Room_type, Capacity, Allowed_Subjects'
     )
     sections_csv = forms.FileField(
         required=False, label='🏫 Sections CSV',
         widget=forms.ClearableFileInput(attrs={'accept': '.csv'}),
-        help_text='Fields: department, year, section, group, fixed_room'
+        help_text='Fields: Department, Semester, section, group, Fixed_room, Course, Program Name, Free_day, Class_Count, Day, Section_Start_time'
     )
     dept_settings_csv = forms.FileField(
         required=False, label='⚙️ Department Settings CSV (optional)',
         widget=forms.ClearableFileInput(attrs={'accept': '.csv'}),
-        help_text='Fields: department, lunch_start_time, lunch_end_time, department_start_time'
+        help_text='Fields: Department, Lunch_Start_time, Department_Start_time'
     )
     auto_generate = forms.BooleanField(
         required=False, initial=True, label='Auto-generate timetable after import',

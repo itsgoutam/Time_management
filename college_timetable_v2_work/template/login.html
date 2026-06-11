@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EduScheduler — Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#eef2fb;--surface:#fff;--border:#dce3f5;
+  --blue:#1565c0;--blue-mid:#1e88e5;--blue-light:#e3f0ff;--blue-dark:#0d47a1;
+  --red:#d32f2f;--green:#16a34a;--text:#1a1f36;--muted:#5b6b86;
+}
+body{font-family:'Roboto',system-ui,sans-serif;background:
+  radial-gradient(1200px 600px at 10% -10%,#dbe7ff 0,transparent 60%),
+  radial-gradient(1000px 500px at 110% 10%,#e7f0ff 0,transparent 55%),var(--bg);
+  color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);
+  border-radius:18px;box-shadow:0 20px 60px rgba(21,101,192,.14);overflow:hidden}
+.head{background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:#fff;padding:26px 28px}
+.head h1{font-size:22px;font-weight:700;letter-spacing:.2px}
+.head p{font-size:13px;opacity:.9;margin-top:4px}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);background:#f4f7fd;border-bottom:1px solid var(--border)}
+.tab{padding:12px 6px;text-align:center;font-size:12.5px;font-weight:600;color:var(--muted);
+  cursor:pointer;border:none;background:none;border-bottom:3px solid transparent;transition:.15s}
+.tab:hover{color:var(--blue)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);background:#fff}
+.body{padding:26px 28px}
+.pane{display:none}
+.pane.active{display:block;animation:fade .2s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 6px}
+input,select{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;
+  font-size:14px;font-family:inherit;background:#fff;color:var(--text);transition:.15s}
+input:focus,select:focus{outline:none;border-color:var(--blue-mid);box-shadow:0 0 0 3px var(--blue-light)}
+.hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+.btn{width:100%;margin-top:20px;padding:12px;border:none;border-radius:10px;background:var(--blue);
+  color:#fff;font-size:14.5px;font-weight:600;cursor:pointer;transition:.15s}
+.btn:hover{background:var(--blue-dark)}
+.msgs{margin:0 28px;margin-top:18px}
+.msg{padding:10px 14px;border-radius:9px;font-size:13px;margin-bottom:8px}
+.msg.error{background:#fde8e8;color:#9b1c1c;border:1px solid #f5c2c2}
+.msg.success{background:#e6f6ec;color:#13653a;border:1px solid #b5e3c6}
+.msg.info{background:var(--blue-light);color:var(--blue-dark);border:1px solid #b9d6f5}
+.foot{padding:0 28px 22px;font-size:11.5px;color:var(--muted);text-align:center}
+.pane-desc{font-size:12.5px;color:var(--muted);background:#f6f9ff;border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="head">
+    <h1>📅 EduScheduler</h1>
+    <p>Sign in to continue</p>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-tab="admin">Admin</button>
+    <button type="button" class="tab" data-tab="dept">Dept Admin</button>
+    <button type="button" class="tab" data-tab="professor">Professor</button>
+    <button type="button" class="tab" data-tab="student">Student</button>
+  </div>
+
+  {% if messages %}
+  <div class="msgs">
+    {% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="body">
+    <!-- Admin -->
+    <form method="post" class="pane active" data-pane="admin">
+      {% csrf_token %}
+      <input type="hidden" name="login_type" value="admin">
+      <div class="pane-desc">Full access to all departments, uploads and settings.</div>
+      <label>Admin username</label>
+      <input type="text" name="username" autocomplete="username" required>
+      <label>Password</label>
+      <input type="password" name="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Sign in as Admin</button>
+    </form>
+
+    <!-- Department Admin -->
+    <form method="post" class="pane" data-pane="dept">
+      {% csrf_token %}
+      <input type="hidden" name="login_type" value="dept_admin">
+      <div class="pane-desc">Manage and view the timetable for your department only.</div>
+      <label>Username</label>
+      <input type="text" name="username" autocomplete="username" required>
+      <label>Password</label>
+      <input type="password" name="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Sign in as Department Admin</button>
+    </form>
+
+    <!-- Professor -->
+    <form method="post" class="pane" data-pane="professor">
+      {% csrf_token %}
+      <input type="hidden" name="login_type" value="professor">
+      <div class="pane-desc">View your own teaching timetable.</div>
+      <label>Your name (as in the uploaded data)</label>
+      <input type="text" name="username" placeholder="e.g. Dr.Sandeep Kad" required>
+      <label>Password (your Teacher ID)</label>
+      <input type="password" name="password" placeholder="e.g. CS001" required>
+      <div class="hint">Use the exact name and Teacher ID from the professors CSV.</div>
+      <button class="btn" type="submit">View my timetable</button>
+    </form>
+
+    <!-- Student -->
+    <form method="post" class="pane" data-pane="student">
+      {% csrf_token %}
+      <input type="hidden" name="login_type" value="student">
+      <div class="pane-desc">No password needed — pick your class to view its timetable.</div>
+      <label>Department</label>
+      <select id="s_dept" required><option value="">— Select department —</option></select>
+      <label>Course</label>
+      <select id="s_course" name="course_id" required disabled><option value="">— Select course —</option></select>
+      <label>Semester</label>
+      <select id="s_year" name="year" required disabled><option value="">— Select semester —</option></select>
+      <label>Section</label>
+      <select id="s_section" name="section_name" required disabled><option value="">— Select section —</option></select>
+      <button class="btn" type="submit">View timetable</button>
+    </form>
+  </div>
+
+  <div class="foot">Default admin on first run: <b>admin / admin123</b> — change it after signing in.</div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click', function(){
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.querySelector('.pane[data-pane="'+t.dataset.tab+'"]').classList.add('active');
+  });
+});
+
+// Student cascading selects
+var DATA = {{ student_data_json|safe }};
+var dept = document.getElementById('s_dept'),
+    course = document.getElementById('s_course'),
+    year = document.getElementById('s_year'),
+    section = document.getElementById('s_section');
+
+function opt(v,t){var o=document.createElement('option');o.value=v;o.textContent=t;return o;}
+function reset(sel,ph){sel.innerHTML='';sel.appendChild(opt('',ph));sel.disabled=true;}
+function uniq(arr,keyFn){var seen={},out=[];arr.forEach(function(r){var k=keyFn(r);if(!seen[k]){seen[k]=1;out.push(r);}});return out;}
+
+// Populate departments
+uniq(DATA,r=>r.dept_id).forEach(function(r){dept.appendChild(opt(r.dept_id,r.dept_name));});
+
+dept.addEventListener('change',function(){
+  reset(course,'— Select course —');reset(year,'— Select year —');reset(section,'— Select section —');
+  var rows=DATA.filter(r=>String(r.dept_id)===dept.value);
+  uniq(rows,r=>r.course_id).forEach(function(r){course.appendChild(opt(r.course_id,r.course_name));});
+  course.disabled=rows.length===0;
+});
+course.addEventListener('change',function(){
+  reset(year,'— Select year —');reset(section,'— Select section —');
+  var rows=DATA.filter(r=>String(r.course_id)===course.value);
+  uniq(rows,r=>r.year).forEach(function(r){year.appendChild(opt(r.year,r.year_label));});
+  year.disabled=rows.length===0;
+});
+year.addEventListener('change',function(){
+  reset(section,'— Select section —');
+  var rows=DATA.filter(r=>String(r.course_id)===course.value && r.year===year.value);
+  uniq(rows,r=>r.section_name).forEach(function(r){section.appendChild(opt(r.section_name,'Section '+r.section_label));});
+  section.disabled=rows.length===0;
+});
+</script>
+</body>
+</html>
