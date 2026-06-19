@@ -135,7 +135,7 @@ tbody tr:hover{background:#f5f8ff;}
 tbody tr:hover td:first-child{background:#e8effe;}
 
 /* CELLS */
-.cell{border-radius:9px;padding:7px 5px;width:100%;height:calc(var(--cell-h) - 8px);
+.cell{border-radius:9px;padding:7px 6px;width:100%;min-height:calc(var(--cell-h) - 8px);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   text-align:center;gap:2px;position:relative;transition:transform .15s,box-shadow .15s;}
 .cell:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.1);}
@@ -150,6 +150,9 @@ tbody tr:hover td:first-child{background:#e8effe;}
 .cell-elec   {background:#fff3e6;        border:1.5px dashed #fb923c;}
 .cell-elec   .type-badge{background:#ffedd5;color:#c2410c;}
 .cell-elec   .cell-name{color:#c2410c;}
+td{vertical-align:top;height:auto;}
+.cell-name,.cell-class,.cell-room{overflow-wrap:anywhere;word-break:break-word;white-space:normal;max-width:100%;}
+.cell-class span{overflow-wrap:anywhere;word-break:break-word;}
 .cell-empty  {background:#f8faff;        border:1.5px solid #eef2ff;}
 .cell-lunch  {background:var(--lunch-bg);border:1.5px solid var(--lunch-border);align-items:center;justify-content:center;}
 
@@ -370,9 +373,9 @@ tbody tr:hover td:first-child{background:#e8effe;}
             {% else %}
               <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
                 {% if cell.entries %}
-                  {% with e=cell.entries.0 %}
+                  {% for e in cell.entries %}
                   {% with st=e.ts.subject.subject_type %}
-                  <div class="cell {% if e.ts.subject.is_elective %}cell-elec{% elif st == 'LAB' %}cell-lab{% elif st == 'TUTORIAL' %}cell-tut{% elif st == 'NPTEL' %}cell-nptel{% else %}cell-theory{% endif %}">
+                  <div class="cell {% if e.ts.subject.is_elective %}cell-elec{% elif st == 'LAB' %}cell-lab{% elif st == 'TUTORIAL' %}cell-tut{% elif st == 'NPTEL' %}cell-nptel{% else %}cell-theory{% endif %}"{% if not forloop.last %} style="margin-bottom:6px;"{% endif %}>
                     <span class="type-badge">{% if e.ts.subject.is_elective %}🔀 ELECTIVE{% elif st == 'LAB' %}🧪 LAB{% elif st == 'TUTORIAL' %}📝 TUT{% elif st == 'NPTEL' %}📡 NPTEL{% else %}📘 THEORY{% endif %}</span>
                     <div class="cell-name">{{ e.ts.subject.name }}</div>
                     <div class="cell-class">
@@ -390,7 +393,7 @@ tbody tr:hover td:first-child{background:#e8effe;}
                     {% else %}<div class="cell-room" style="color:var(--muted);border-style:dashed;">No room</div>{% endif %}
                   </div>
                   {% endwith %}
-                  {% endwith %}
+                  {% endfor %}
                 {% elif cell.fixed %}
                   <div class="cell cell-fixed">
                     <span class="type-badge">📌 FIXED</span>

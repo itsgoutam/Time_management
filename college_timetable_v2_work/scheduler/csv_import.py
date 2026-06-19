@@ -5,10 +5,60 @@ Handles: subjects, professors, rooms, sections, department_settings
 import csv
 import io
 from collections import defaultdict
+import re
 from .models import (
     Department, DepartmentSettings, Course, Room, Section,
-    Professor, Subject, ProfessorOccupiedTime, ProfessorFixedSlot
+    Professor, Subject, ProfessorOccupiedTime, ProfessorFixedSlot, TeachingAssignment,
+    TimeSlot
 )
+
+
+def _resolve_professor(teacher_id, name, defaults):
+    """Find (or create) the ONE canonical professor for this row, self-healing any
+    pre-existing duplicates so a re-import never crashes or multiplies records.
+
+    Identity: Teacher_id is the unique cross-department key when present; otherwise
+    the name. If several rows already share that key (e.g. created by an older
+    name-based import, possibly with different name spellings), they are collapsed
+    into a single record — relations (timeslots, assignments, blocked/fixed times,
+    department mappings) are moved onto the survivor and the rest deleted. Returns
+    (professor, created_flag)."""
+    if teacher_id:
+        matches = list(Professor.objects.filter(professor_id=teacher_id).order_by('id'))
+    else:
+        matches = list(Professor.objects.filter(name=name, professor_id='').order_by('id'))
+
+    if not matches:
+        prof = Professor.objects.create(**defaults)
+        return prof, True
+
+    # Keep the richest record (most timetable usage / assignments / has a department).
+    def _score(p):
+        return (TimeSlot.objects.filter(professor=p).count(),
+                p.assignments.count(),
+                1 if p.department_id else 0,
+                p.id)
+    keep = max(matches, key=_score)
+    for p in matches:
+        if p.id == keep.id:
+            continue
+        TimeSlot.objects.filter(professor=p).update(professor=keep)
+        p.assignments.all().update(professor=keep)
+        p.occupied_times.all().update(professor=keep)
+        p.fixed_slots.all().update(professor=keep)
+        for d in p.departments.all():
+            keep.departments.add(d)
+        for subj in p.subject_set.all():
+            subj.professors.remove(p)
+            subj.professors.add(keep)
+        p.delete()
+    return keep, False
+
+
+def _sem_digits(val):
+    """Normalise a semester value to its leading digits: '4th' -> '4', '4' -> '4'."""
+    m = re.match(r'\s*(\d+)', str(val or ''))
+    return m.group(1) if m else _norm(val).lower()
 
 
 def _norm(val):
@@ -43,6 +93,68 @@ def _is_note_row(text):
 
 def _parse_bool(val, default=False):
     return _norm_up(val) in ('YES', 'TRUE', '1', 'Y')
+
+
+# ── File reading: accept CSV *or* Excel (.xlsx) transparently ───────────────────
+
+def _cell_str(c):
+    """Stringify one spreadsheet cell so xlsx rows look identical to CSV rows."""
+    if c is None:
+        return ''
+    import datetime
+    if isinstance(c, bool):
+        return 'YES' if c else 'NO'
+    if isinstance(c, float) and c.is_integer():
+        return str(int(c))
+    if isinstance(c, datetime.datetime):
+        return c.strftime('%H:%M')
+    if isinstance(c, datetime.time):
+        return c.strftime('%H:%M')
+    return str(c).strip()
+
+
+class _XlsxReader:
+    """Reads an .xlsx upload into the same shape csv.DictReader produces:
+    iterable of {header: value} dicts, plus a .fieldnames list."""
+    def __init__(self, raw):
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb.active
+        self.fieldnames = []
+        self._rows = []
+        headers = None
+        for r in ws.iter_rows(values_only=True):
+            vals = [_cell_str(c) for c in r]
+            if headers is None:
+                if not any(v.strip() for v in vals):
+                    continue  # skip blank lead rows before the header
+                headers = [h or '' for h in vals]
+                self.fieldnames = headers
+                continue
+            if not any(v.strip() for v in vals):
+                continue  # skip fully blank data rows
+            self._rows.append({headers[i] if i < len(headers) else f'col{i}':
+                               (vals[i] if i < len(vals) else '')
+                               for i in range(max(len(headers), len(vals)))})
+        wb.close()
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+def _read_rows(file_obj):
+    """Return a row reader for a CSV **or** Excel (.xlsx) upload. The result is
+    iterable (dict rows) and exposes .fieldnames, so every importer can stay
+    format-agnostic."""
+    data = file_obj.read()
+    raw = data.encode('utf-8') if isinstance(data, str) else data
+    name = (getattr(file_obj, 'name', '') or '').lower()
+    # Excel/OOXML files are ZIP archives — magic bytes 'PK\x03\x04'.
+    is_xlsx = raw[:4] == b'PK\x03\x04' or name.endswith(('.xlsx', '.xlsm'))
+    if is_xlsx:
+        return _XlsxReader(raw)
+    text = raw.decode('utf-8-sig', errors='replace')
+    return csv.DictReader(io.StringIO(text))
 
 
 # ── Department Settings CSV ────────────────────────────────────────────────────
@@ -99,10 +211,11 @@ def import_department_settings(file_obj, errors, warnings):
         return result
 
     created = 0
-    reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
+    reader = _read_rows(file_obj)
     for i, row in enumerate(reader, 1):
         row = _normalize_row(row)
-        raw_dept = row.get('department', '')
+        # Accept either 'Department_name' (current template) or legacy 'Department'.
+        raw_dept = row.get('department_name', '') or row.get('department', '')
         if _norm(raw_dept).startswith('#') or _is_note_row(raw_dept):
             continue
         dept_name = _norm(raw_dept)
@@ -155,7 +268,7 @@ def import_rooms(file_obj, errors, warnings, default_department=None):
     Department Admin's department (default_department) when blank.
     """
     created = 0
-    reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
+    reader = _read_rows(file_obj)
     for i, row in enumerate(reader, 1):
         row = _normalize_row(row)
         if _is_note_row(row.get('room_id', '')) or _is_note_row(row.get('department_name', '')):
@@ -249,6 +362,28 @@ def _parse_block_slots(block_str):
     return None
 
 
+def _resolve_assignment_dept(sem, sec_name, program, default_department, home_dept):
+    """The department that OWNS a teaching assignment = the department of the section
+    it targets (matched by semester + section name, disambiguated by program). Falls
+    back to the uploading department, then the row's home department. This is what lets
+    a shared professor's assignments be scoped per department on re-upload."""
+    sem = (sem or '').strip()
+    sn = (sec_name or '').strip().lower()
+    if sem and sn:
+        cands = [s for s in Section.objects.select_related('course__department')
+                 if _sem_digits(s.year) == sem
+                 and s.get_effective_section_name().strip().lower() == sn]
+        if program:
+            prog = program.strip().upper()
+            pm = [s for s in cands if (s.program or '').strip().upper() == prog]
+            cands = pm or cands
+        for s in cands:
+            d = getattr(getattr(s, 'course', None), 'department', None)
+            if d:
+                return d
+    return default_department or home_dept
+
+
 def import_professors(file_obj, errors, warnings, default_department=None):
     """
     Columns: professor_id, professor_name, max_workload_hours_per_week,
@@ -262,7 +397,8 @@ def import_professors(file_obj, errors, warnings, default_department=None):
     # workload on later rows keeps the existing value; if stated more than once we
     # keep the MAXIMUM. (A teacher spans several rows — one per subject taught.)
     explicit_wl = set()
-    reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
+    cleared_assign = set()   # professors whose old TeachingAssignments were cleared this run
+    reader = _read_rows(file_obj)
     # Normalise fieldnames so column lookup is case/space-insensitive
     raw_fields = reader.fieldnames or []
     norm_fields = [_norm_key(f) for f in raw_fields]
@@ -273,9 +409,12 @@ def import_professors(file_obj, errors, warnings, default_department=None):
     FIXED_KEY = next((f for f in norm_fields
                       if 'fixed' in f and 'time' in f), None)
     # The "for specific class" column may be named SUB_CAN_TEACH_FOR_SPECIFIC_CLASS
-    # or the quoted "Dept Name,Prog Name,Sem,Sec" header (one comma-joined field).
+    # or the legacy quoted "Dept Name,Prog Name,Sem,Sec" header (one comma-joined field).
     SPECIFIC_KEY = next((f for f in norm_fields
                          if 'sub_can_teach' in f or ('prog' in f and ('sem' in f or 'sec' in f))), None)
+    # NEW format: the class is given in explicit columns instead of one combined
+    # field — Program_name, Course_name, Semester, Section and (new) Group.
+    HAS_EXPLICIT_CLASS = ('semester' in norm_fields and 'section' in norm_fields)
 
     for i, row in enumerate(reader, 1):
         row = _normalize_row(row)
@@ -300,25 +439,56 @@ def import_professors(file_obj, errors, warnings, default_department=None):
             home_dept = default_department
         # Specialization subject: 'specialization_subjects' (legacy) or 'Subject Name' (new).
         spec = _norm(row.get('specialization_subjects', '') or row.get('subject_name', ''))
-        specific_class = _norm(
-            row.get('sub_can_teach_for_specific_class', '')
-            or (row.get(SPECIFIC_KEY, '') if SPECIFIC_KEY else ''))
 
-        # Parse the "for specific class" field into a pipe-separated restriction entry.
-        # Format in CSV: "CSE,BTECH,2 YEAR,SEC-A" → stored as "CSE|BTECH|2 YEAR|SEC-A"
+        # ── Determine the class this teacher takes (semester / section / group) ──
+        # NEW format: explicit Program_name, Course_name, Semester, Section, Group
+        # columns. LEGACY format: one combined "Dept,Prog,Sem,Sec" field.
         section_restr_entry = ''
-        if specific_class:
-            parts = [p.strip() for p in specific_class.split(',') if p.strip()]
-            if parts:
-                section_restr_entry = '|'.join(parts[:4])
+        ta_sem = ta_sec = ta_program = ''
+        ta_groups = []        # groups this row's assignment applies to ('' = whole section)
+        if HAS_EXPLICIT_CLASS:
+            p_prog   = _norm(row.get('program_name', ''))   # branch(es), e.g. "CSE,COE"
+            p_course = _norm(row.get('course_name', ''))     # degree, e.g. "B.TECH"
+            p_sem    = _norm(row.get('semester', ''))
+            p_sec    = _norm(row.get('section', ''))
+            p_group  = _norm_up(row.get('group', '')).replace(' ', ',')
+            ta_sem = _sem_digits(p_sem)
+            ta_sec = p_sec
+            ta_program = p_prog
+            restr = [x for x in (p_prog, p_course, p_sem, p_sec) if x]
+            section_restr_entry = '|'.join(restr)
+            glist = [g.strip() for g in p_group.split(',') if g.strip() in ('G1', 'G2', 'G3', 'G4')]
+            # One specific group → assign to that group only; all/both/blank →
+            # the whole section (stored as group '').
+            ta_groups = [glist[0]] if len(glist) == 1 else ['']
+        else:
+            specific_class = _norm(
+                row.get('sub_can_teach_for_specific_class', '')
+                or (row.get(SPECIFIC_KEY, '') if SPECIFIC_KEY else ''))
+            cls_parts = [p.strip() for p in specific_class.split(',') if p.strip()]
+            if cls_parts:
+                section_restr_entry = '|'.join(cls_parts[:4])
+            ta_program = cls_parts[1] if len(cls_parts) >= 2 else ''
+            ta_sem = _sem_digits(cls_parts[2]) if len(cls_parts) >= 3 else ''
+            ta_sec = cls_parts[3] if len(cls_parts) >= 4 else ''
+            ta_groups = ['']
 
-        prof, created_flag = Professor.objects.get_or_create(name=name, defaults={
+        # Identity: prefer Teacher_id as the unique cross-department reference, so the
+        # SAME teacher_id appearing under two departments is ONE shared professor (not
+        # a duplicate). Fall back to name when no Teacher_id is given. _resolve_professor
+        # also collapses any pre-existing duplicates so a re-import is self-healing.
+        defaults = {
+            'name': name,
             'max_workload_hours_per_week': max_wl,
             'specialization_subjects': spec,
             'section_restrictions': section_restr_entry,
             'professor_id': teacher_id,
             'department': home_dept,
-        })
+        }
+        prof, created_flag = _resolve_professor(teacher_id, name, defaults)
+        # Map this professor to the row's department (cross-department sharing).
+        if home_dept:
+            prof.departments.add(home_dept)
         if created_flag:
             created += 1
             if wl_raw.isdigit():
@@ -335,6 +505,10 @@ def import_professors(file_obj, errors, warnings, default_department=None):
                 explicit_wl.add(prof.id)
             if teacher_id and not prof.professor_id:
                 prof.professor_id = teacher_id
+            # When matched by Teacher_id, the latest CSV's name wins so duplicate
+            # spellings (e.g. "Kulbir Kaur" vs "Ms. Kulbir Kaur") converge.
+            if teacher_id and name and prof.name != name:
+                prof.name = name
             if home_dept and not prof.department_id:
                 prof.department = home_dept
             if spec:
@@ -348,6 +522,33 @@ def import_professors(file_obj, errors, warnings, default_department=None):
                     existing_r.append(section_restr_entry)
                     prof.section_restrictions = ','.join(existing_r)
             prof.save()
+
+        # ── Explicit teaching assignment (authoritative) ────────────────────
+        # The row says: this teacher teaches `spec` for this Sem/Section/Group.
+        # Record it so the timetable assigns exactly them. A different teacher may
+        # be named per group (e.g. ML Lab G1 vs G2), so we key on group too.
+        if spec and ta_sec:
+            # Owning department = the section's department (so a SHARED professor's
+            # assignments are scoped per department). Map the professor to it too, so
+            # a teacher who teaches in another department becomes visible there.
+            owning_dept = _resolve_assignment_dept(
+                ta_sem, ta_sec, ta_program, default_department, home_dept)
+            if owning_dept:
+                prof.departments.add(owning_dept)
+            # Rebuild ONLY this owning department's assignments for this teacher the
+            # first time we see this (teacher, department) pair — never the others.
+            ckey = (prof.id, owning_dept.id if owning_dept else None)
+            if ckey not in cleared_assign:
+                prof.assignments.filter(department=owning_dept).delete()
+                cleared_assign.add(ckey)
+            for g in ta_groups:
+                ta_obj, _ = TeachingAssignment.objects.get_or_create(
+                    professor=prof, subject_name=spec, semester=ta_sem,
+                    section_name=ta_sec, group=g,
+                    defaults={'department': owning_dept})
+                if ta_obj.department_id != (owning_dept.id if owning_dept else None):
+                    ta_obj.department = owning_dept
+                    ta_obj.save(update_fields=['department'])
 
         # ── Block time slots ────────────────────────────────────────────────
         if BLOCK_KEY:
@@ -435,16 +636,18 @@ def import_sections(file_obj, errors, warnings):
     }
     VALID_DAYS = {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}
     created = 0
-    reader = csv.DictReader(io.TextIOWrapper(file_obj, encoding='utf-8-sig'))
+    reader = _read_rows(file_obj)
     for i, row in enumerate(reader, 1):
         row = _normalize_row(row)
-        dept_name = _norm(row.get('department', ''))
+        # Accept either 'Department_name' (current template) or legacy 'Department'.
+        dept_name = _norm(row.get('department_name', '') or row.get('department', ''))
         # Accept either 'year' (legacy) or 'Semester' (new template) for the year/sem field.
         year_raw = _norm_up(row.get('year', '') or row.get('semester', ''))
         sec_raw = _norm_up(row.get('section', 'A'))
         group_raw = _norm_up(row.get('group', 'G1'))
         fixed_room_name = _norm(row.get('fixed_room', ''))
-        course_raw = _norm_up(row.get('course', ''))
+        # Accept either 'Course_name' (current template) or legacy 'Course'.
+        course_raw = _norm_up(row.get('course_name', '') or row.get('course', ''))
         # Parse free_day — accept column name 'free_day' or 'Free Day / Holiday'
         free_day_raw = _norm(row.get('free_day', '') or row.get('Free Day / Holiday', ''))
         free_day = DAY_NORM.get(free_day_raw.upper(), free_day_raw.capitalize() if free_day_raw else '')
@@ -473,7 +676,8 @@ def import_sections(file_obj, errors, warnings):
 
         # Skip comment / sub-header / note rows
         if (not dept_name or dept_name.startswith('#')
-                or dept_name.lower() == 'department' or _is_note_row(dept_name)):
+                or dept_name.lower() in ('department', 'department_name')
+                or _is_note_row(dept_name)):
             continue
         if not year_raw:
             warnings.append(f"Sections row {i}: missing year, skipped.")
@@ -485,6 +689,8 @@ def import_sections(file_obj, errors, warnings):
         custom_sec = sec_raw if sec_code == 'CUSTOM' else ''
         group = group_raw if group_raw in ('G1', 'G2', 'G3', 'G4') else 'G1'
         course_code = COURSE_MAP.get(course_raw, 'BTECH')
+        # Student branch/programme, e.g. CSE / COE (from the 'Program Name' column).
+        program = _norm_up(row.get('program_name', '') or row.get('program', ''))
 
         dept, _ = Department.objects.get_or_create(name=dept_name)
         course, _ = Course.objects.get_or_create(department=dept, name=course_code)
@@ -501,8 +707,12 @@ def import_sections(file_obj, errors, warnings):
             sec, created_flag = Section.objects.get_or_create(
                 course=course, year=year_code, section_name=sec_code,
                 group=group, custom_year=custom_year, custom_section_name=custom_sec,
-                defaults={'fixed_room': fixed_room, 'free_day': free_day, 'class_count': class_count, 'section_start_slot': section_start_slot}
+                defaults={'fixed_room': fixed_room, 'free_day': free_day, 'class_count': class_count,
+                          'section_start_slot': section_start_slot, 'program': program}
             )
+            if not created_flag and program and sec.program != program:
+                sec.program = program
+                sec.save(update_fields=['program'])
             if not created_flag:
                 updated = False
                 if fixed_room:
@@ -566,8 +776,7 @@ def import_subjects(file_obj, errors, warnings):
     }
 
     subject_defs = []
-    wrapper = io.TextIOWrapper(file_obj, encoding='utf-8-sig')
-    reader = csv.DictReader(wrapper)
+    reader = _read_rows(file_obj)
 
     # Detect format by inspecting fieldnames
     fieldnames = [f.strip().lower() for f in (reader.fieldnames or [])]
@@ -600,15 +809,34 @@ def import_subjects(file_obj, errors, warnings):
                 except (ValueError, TypeError):
                     return default
 
-            theory = _safe_int(row.get('theory_per_week', 0))
-            lab    = _safe_int(row.get('lab_per_week', 0))
-            tut    = _safe_int(row.get('tutorial_per_week', 0))
+            # 'Theory_per_week_per_section' (current) or 'Theory_per_week' (older).
+            theory = _safe_int(row.get('theory_per_week_per_section', 0)
+                               or row.get('theory_per_week', 0))
+            # Labs/tutorials: the current template states these PER GROUP and the
+            # value is the number of weekly SESSIONS per group (e.g. Lab=1 → one
+            # 2-slot lab block per group; Lab=2 → two, as for a major project).
+            # Legacy templates used 'Lab_per_week' as contact HOURS (2 or 4), so a
+            # 2-slot block already covers 2 hours → sessions = hours / 2.
+            if 'lab_per_week_per_group' in fieldnames or 'tutorial_per_week_per_group' in fieldnames:
+                lab = _safe_int(row.get('lab_per_week_per_group', 0))        # sessions/group
+                tut = _safe_int(row.get('tutorial_per_week_per_group', 0))   # tutorials/group
+            else:
+                lab_hours = _safe_int(row.get('lab_per_week', 0))
+                lab = max(1, lab_hours // 2) if lab_hours > 0 else 0
+                tut = _safe_int(row.get('tutorial_per_week', 0))
 
-            course_filter = _norm(row.get('course', ''))
+            # 'Course_name' (new) or 'Course' (legacy) — the degree, e.g. B.TECH.
+            course_filter = _norm(row.get('course', '') or row.get('course_name', ''))
             # Accept either 'academic_year' (legacy) or 'Semester' (new template).
             year_raw      = _norm_up(row.get('academic_year', '') or row.get('semester', ''))
             year_filter   = YEAR_NORM.get(year_raw, year_raw)
             dept_filter   = _norm(row.get('department_name', ''))
+            # Student branches this subject is offered to, e.g. "CSE,COE" → {CSE, COE}.
+            # This is the real student filter; Department_name is only the teaching
+            # faculty's home department (which may differ, e.g. Applied Science).
+            program_filter = {p.strip().upper() for p in
+                              _norm(row.get('program_name', '')).replace(';', ',').split(',')
+                              if p.strip()}
 
             base = {
                 'code': code,
@@ -617,11 +845,15 @@ def import_subjects(file_obj, errors, warnings):
                 'course_filter': course_filter,
                 'year_filter': year_filter,
                 'dept_filter': dept_filter,
+                'program_filter': program_filter,
                 'is_elective': is_elective,
             }
 
             if is_nptl:
-                total = theory + lab + tut or 1
+                # NPTEL weekly sessions = Theory_per_week when set (e.g. put 3 for a
+                # 3-lecture NPTEL course); otherwise fall back to the tutorial/lab
+                # count older templates used (Tutorial_per_week=1 → 1), default 1.
+                total = theory if theory > 0 else ((tut + lab) or 1)
                 subject_defs.append({**base, 'name': name,
                                       'subject_type': 'NPTEL',
                                       'lectures_per_week': total,
@@ -634,6 +866,9 @@ def import_subjects(file_obj, errors, warnings):
                                           'duration': 50})
                 if lab > 0:
                     lab_name = f"{name} Lab" if theory > 0 else name
+                    # `lab` is the number of weekly 2-slot lab blocks PER GROUP
+                    # (1 for a normal lab, 2 for e.g. a major project). Each group's
+                    # section is scheduled independently, so this is per group.
                     subject_defs.append({**base, 'name': lab_name,
                                           'subject_type': 'LAB',
                                           'lectures_per_week': lab,
@@ -663,6 +898,106 @@ def import_subjects(file_obj, errors, warnings):
     return subject_defs
 
 
+
+
+# ── Explicit professor → subject linking (auto-assignment is OFF) ──────────────
+
+def _norm_subj_name(s):
+    """Canonicalise a subject name for tolerant matching: lowercase, collapse
+    whitespace and remove spaces around hyphens, so '(PEC-3) - DL' matches
+    '(PEC-3)- DL' and 'Operating Systems  Lab' matches 'Operating Systems Lab'."""
+    s = (s or '').strip().lower()
+    s = re.sub(r'\s*-\s*', '-', s)   # normalise spacing around hyphens
+    s = re.sub(r'\s+', ' ', s)       # collapse remaining whitespace
+    return s
+
+
+def _norm_sec_name(s):
+    return (s or '').strip().lower()
+
+
+def _link_explicit_professors(subjects, warnings):
+    """Attach each Subject to the professor explicitly named for it in the professors
+    CSV (TeachingAssignment). Auto-assignment is OFF — a subject with no teacher named
+    for its exact section/group is left unassigned (its professors are cleared).
+
+    Matching is tolerant: subject names ignore spacing/punctuation differences and a
+    section named 'COE' in the professors CSV matches the 'COE-1' section. THEORY/NPTEL
+    share one teacher across G1+G2; a '... Tutorial' with no teacher of its own inherits
+    its base subject's teacher. Reports any professor-CSV subject that is not defined in
+    the subjects CSV (so it could not be assigned).
+    """
+    # (norm subject, sem digits, norm section, group) -> professor
+    explicit_map = {}
+    for ta in TeachingAssignment.objects.select_related('professor'):
+        key = (_norm_subj_name(ta.subject_name), _sem_digits(ta.semester),
+               _norm_sec_name(ta.section_name), (ta.group or '').strip().upper())
+        explicit_map.setdefault(key, ta.professor)
+
+    def _sec_match(target_sec, assign_sec):
+        # Exact, or an unambiguous prefix at a '-' boundary ('coe' -> 'coe-1').
+        return target_sec == assign_sec or target_sec.startswith(assign_sec + '-')
+
+    def _lookup(nm, sem, sec_name, grp):
+        ns = _norm_subj_name(nm)
+        # Exact section, group-specific first then section-wide ('').
+        for g in (grp, ''):
+            p = explicit_map.get((ns, sem, sec_name, g))
+            if p:
+                return p
+        # Section-spelling fallback (e.g. 'coe' assignment -> 'coe-1' section).
+        for (ens, esem, esec, eg), prof in explicit_map.items():
+            if ens == ns and esem == sem and eg in (grp, '') and _sec_match(sec_name, esec):
+                return prof
+        return None
+
+    def _explicit_prof(subj_name, stype, sec):
+        sem = _sem_digits(sec.year)
+        sec_name = _norm_sec_name(sec.get_effective_section_name())
+        grp = (getattr(sec, 'group', '') or '').strip().upper()
+        p = _lookup(subj_name, sem, sec_name, grp)
+        if p:
+            return p
+        # A tutorial with no teacher of its own inherits the base subject's teacher.
+        if stype == 'TUTORIAL' and subj_name.lower().endswith(' tutorial'):
+            return _lookup(subj_name[:-len(' Tutorial')], sem, sec_name, grp)
+        return None
+
+    # Process G1 before G2 so a G1-only theory teacher propagates to G2.
+    GROUP_ORDER = {'G1': 0, 'G2': 1, 'G3': 2, 'G4': 3}
+    subjects = sorted(subjects, key=lambda s: GROUP_ORDER.get(getattr(s.section, 'group', ''), 9))
+    theory_shared = {}
+    for subj in subjects:
+        sec = subj.section
+        if not sec:
+            continue
+        is_theory = subj.subject_type in ('THEORY', 'NPTEL')
+        tkey = (sec.get_effective_section_name(), sec.year,
+                getattr(getattr(sec, 'course', None), 'name', ''), subj.name)
+        ex = _explicit_prof(subj.name, subj.subject_type, sec)
+        if ex is None and is_theory and sec.group != 'G1' and tkey in theory_shared:
+            ex = theory_shared[tkey]
+        if ex is not None:
+            subj.professors.set([ex])
+            if is_theory and sec.group == 'G1':
+                theory_shared[tkey] = ex
+        else:
+            subj.professors.clear()
+
+    # ── Report professor-CSV subjects that are NOT defined in subjects.csv ────
+    existing = {_norm_subj_name(n) for n in Subject.objects.values_list('name', flat=True)}
+    missing = {}
+    for ta in TeachingAssignment.objects.all():
+        if _norm_subj_name(ta.subject_name) not in existing:
+            label = f"Sem {ta.semester} {ta.section_name}".strip()
+            missing.setdefault(ta.subject_name, set()).add(label)
+    if missing:
+        lines = "; ".join(f"{name} ({', '.join(sorted(secs))})"
+                          for name, secs in sorted(missing.items()))
+        warnings.append(
+            f"{len(missing)} subject(s) are named in the professors CSV but not defined "
+            f"in the subjects CSV, so their teacher(s) could not be assigned. Add them to "
+            f"subjects.csv (matching the name exactly): {lines}")
 
 
 # ── Full Import Orchestrator ───────────────────────────────────────────────────
@@ -697,20 +1032,22 @@ def run_full_import(files_dict, default_department=None):
         except Exception as e:
             errors.append(f"Rooms import failed: {e}")
 
-    # 3. Professors
+    # 3. Sections — imported BEFORE professors so each teaching assignment's owning
+    #    department can be resolved from the section it targets (this is what lets a
+    #    shared professor keep their other department's assignments on a re-upload).
+    if 'sections' in files_dict and files_dict['sections']:
+        try:
+            counts['sections'] = import_sections(files_dict['sections'], errors, warnings)
+        except Exception as e:
+            errors.append(f"Sections import failed: {e}")
+
+    # 4. Professors
     if 'professors' in files_dict and files_dict['professors']:
         try:
             counts['professors'] = import_professors(files_dict['professors'], errors, warnings,
                                                      default_department=default_department)
         except Exception as e:
             errors.append(f"Professors import failed: {e}")
-
-    # 4. Sections
-    if 'sections' in files_dict and files_dict['sections']:
-        try:
-            counts['sections'] = import_sections(files_dict['sections'], errors, warnings)
-        except Exception as e:
-            errors.append(f"Sections import failed: {e}")
 
     # 5. Subjects (defines + links to all matching sections)
     if 'subjects' in files_dict and files_dict['subjects']:
@@ -719,94 +1056,14 @@ def run_full_import(files_dict, default_department=None):
         except Exception as e:
             errors.append(f"Subjects import failed: {e}")
 
-    # Now link subject definitions to matching sections
+    # ── Build subjects from the subjects CSV, then assign explicit professors ──
+    # Subject CREATION (and lab-room auto-assignment) is driven by the subjects CSV.
+    # Professor assignment is a SEPARATE, explicit-only pass (auto-assignment is OFF)
+    # in _link_explicit_professors — which also runs when ONLY the professors CSV is
+    # uploaded (the elif below), so a professors-only upload still assigns everyone.
     if subject_defs:
         all_sections = list(Section.objects.select_related('course__department').order_by('course','year','section_name','group'))  # G1 before G2
-        all_professors = list(Professor.objects.all())
         all_rooms = list(Room.objects.filter(room_type='LAB').all())
-
-        # ── Workload tracker: prof.id -> accumulated lectures assigned ──────
-        # Tracks how many lectures each professor has been assigned so far.
-        # Uses RATIO (assigned / max_capacity) for fair comparison — a prof
-        # with 18hr max and 10 lectures is MORE loaded than a 20hr max prof
-        # with the same 10 lectures.
-        import_prof_load = defaultdict(int)
-        BLEND_THRESHOLD = 0.85   # blend non-spec profs when spec profs are 85%+ loaded
-
-        def _load_ratio(p):
-            """Proportion of workload used: 0.0 = free, 1.0 = full."""
-            cap = max(1, (p.max_workload_hours_per_week * 60) // 50)
-            return import_prof_load[p.id] / cap
-
-        # ── TWO-PASS ASSIGNMENT ───────────────────────────────────────────────
-        #
-        # PASS 1 — Specialized subjects processed first (sorted by priority):
-        #           spec_required=True subjects come before non-spec subjects.
-        #           Spec professors are GUARANTEED their own subject family first.
-        #
-        # PASS 2 — Remaining capacity goes to other subjects.
-        #           ALL professors (including spec ones) are eligible so that
-        #           leftover capacity is distributed evenly.
-        #
-        # Within each pass the least-loaded professor is always chosen.
-        # Result: spec prof teaches their subject family first, then takes
-        # on other subjects only if they still have capacity.
-
-        # Generic type-tokens that should NOT count as domain matches.
-        # "OS Lab" should NOT match "DBMS Lab" just because both have "lab".
-        _GENERIC_TOKENS = {'lab', 'tutorial', 'theory', 'practical', 'workshop',
-                           'nptel', 'nptl', 'seminar', 'project'}
-
-        def _domain_tokens(text):
-            """Return meaningful (non-generic) tokens from a subject/spec name."""
-            return set(text.lower().split()) - _GENERIC_TOKENS
-
-        def _strict_spec_match(prof, name, code=''):
-            """
-            Domain-aware spec match — prevents 'OS Lab' spec matching 'DBMS Lab'.
-
-            Logic (most-specific first):
-              1. Exact full match         'OS Lab' == 'OS Lab'
-              2. Direct substring         'OS' in 'OS Lab'  OR  'OS Lab' in 'OS Tutorial'
-              3. DOMAIN token overlap     domain('OS Lab') = {'os'}
-                                          domain('OS Tutorial') = {'os'}  → overlap {'os'} ✓
-                                          domain('DBMS Lab') = {'dbms'}   → NO overlap  ✗
-            """
-            specs = prof.get_specialization_list()
-            if not specs:
-                return False          # No spec list = no priority claim
-            name_l = name.lower().strip()
-            code_l = (code or '').lower().strip()
-            for spec in specs:
-                # 1. Exact match
-                if spec == name_l or (code_l and spec == code_l):
-                    return True
-                # 2. Direct substring (bidirectional)
-                if spec in name_l or name_l in spec:
-                    return True
-                if code_l and (spec in code_l or code_l in spec):
-                    return True
-                # 3. Domain token overlap (generic tokens excluded)
-                spec_domain = _domain_tokens(spec)
-                subj_domain = _domain_tokens(name_l)
-                if spec_domain and subj_domain and spec_domain & subj_domain:
-                    return True
-            return False
-
-        def _has_spec_match(sdef):
-            name = sdef['name']
-            code = sdef.get('code', '')
-            return any(_strict_spec_match(p, name, code) for p in all_professors)
-
-        def _assign_professor(subj, sdef, sec, eligible_profs):
-            if not eligible_profs:
-                return None
-            # Pick professor with lowest load RATIO (not raw count).
-            # Ensures fair distribution across professors with different max hours.
-            chosen = min(eligible_profs, key=_load_ratio)
-            subj.professors.set([chosen])
-            import_prof_load[chosen.id] += sdef.get('lectures_per_week', 1)
-            return chosen
 
         def _build_subject(sdef, sec, all_rooms):
             lab_room = None
@@ -850,13 +1107,30 @@ def run_full_import(files_dict, default_department=None):
             course_filter = _norm_up(sdef.get('course_filter', ''))
             year_filter   = _norm_up(sdef.get('year_filter', ''))
             dept_filter   = sdef.get('dept_filter', '')
+            program_filter = sdef.get('program_filter') or set()
+            dept_norm     = _norm_dept(dept_filter)
+            prog_norms    = {_norm_dept(p) for p in program_filter}
+            sec_program   = _norm_dept(getattr(sec, 'program', ''))
+            # Program_name is a real STUDENT-BRANCH filter only when it differs from
+            # the subject's own department (e.g. Applied Science dept, "CSE,COE"
+            # program). When it merely repeats the department name (older single-
+            # vocabulary templates), it is not a filter — match by department instead.
+            prog_is_branch = bool(prog_norms) and prog_norms != {dept_norm}
+
             # Specific group filter — only assign to that group
             if ag in ('G1', 'G2', 'G3', 'G4') and sec.group != ag:
                 return False
-            # Department filter — keep a subject within its own department's sections.
-            if dept_filter:
+            # Branch/programme filter (PRIMARY when distinct): offers a subject to the
+            # right students even when another department teaches it (Applied Science
+            # → CSE). The section's branch must be one of the subject's branches.
+            if prog_is_branch and sec_program:
+                if sec_program not in prog_norms:
+                    return False
+            # Otherwise keep a subject within its own department's sections (preserves
+            # single-/multi-department datasets where program == department).
+            elif dept_filter:
                 sec_dept = getattr(getattr(sec.course, 'department', None), 'name', '')
-                if _norm_dept(dept_filter) != _norm_dept(sec_dept):
+                if dept_norm != _norm_dept(sec_dept):
                     return False
             if course_filter:
                 sec_course = _norm_up(getattr(sec.course, 'name', ''))
@@ -867,124 +1141,28 @@ def run_full_import(files_dict, default_department=None):
                 if year_filter != sec_year:
                     return False
             return True
-
-        # Sort: spec_required=True first, then subjects that have a spec-match
-        # professor, then everything else.
-        # This guarantees spec professors fill their own subjects before non-spec
-        # subjects consume their remaining capacity.
-        def _sdef_priority(s):
-            if s['specialization_required']:
-                return 0
-            if _has_spec_match(s):
-                return 1
-            return 2
-
-        subject_defs_sorted = sorted(subject_defs, key=_sdef_priority)
-
-        # THEORY shared-professor map:
-        # key = (section_name, year, course_name, subject_name)
-        # value = professor assigned to G1 (G2 must reuse same prof — same physical lecture)
-        theory_shared_prof = {}
-
-        for sdef in subject_defs_sorted:
+        # Create / refresh every subject that matches a section. No professor logic
+        # here — teachers are attached by the explicit-only pass below.
+        built_subjects = []
+        for sdef in subject_defs:
             for sec in all_sections:
                 if not _section_matches(sdef, sec):
                     continue
-
                 subj, created_flag = _build_subject(sdef, sec, all_rooms)
-
-                name = sdef['name']
-                code = sdef.get('code', '')
-
-                # ── Build eligible professor pool ────────────────────────────
-                #
-                # RULE: Professors specialized for a subject always get
-                #       FIRST PRIORITY for that subject.
-                #       They may also teach non-spec subjects with remaining capacity.
-                #
-                # spec_profs : professors whose specialization covers this subject
-                #              (flexible can_teach_specialized: "OS Lab" covers
-                #               "OS", "OS Lab", "OS Tutorial" etc.)
-                # non_spec   : everyone else — fallback only.
-
-                # Use strict domain-aware match to avoid false positives like
-                # "OS Lab" spec matching "DBMS Lab" via the generic "lab" token.
-                spec_profs = [p for p in all_professors if _strict_spec_match(p, name, code)]
-                non_spec   = [p for p in all_professors if p not in spec_profs]
-
-                if spec_profs:
-                    # Prefer spec professors who also match the section preference
-                    pref   = [p for p in spec_profs if p.can_teach_section(sec)]
-                    others = [p for p in spec_profs if p not in pref]
-                    spec_pool = pref + others
-
-                    # Check remaining capacity for each spec professor using ratio.
-                    # Threshold 0.85 = prof still has ~15% capacity left.
-                    # Non-spec professors are blended in when spec profs are near-full,
-                    # preventing one specialized professor from carrying all sections.
-                    spec_with_capacity = [p for p in spec_pool if _load_ratio(p) < 1.0]
-                    spec_not_overloaded = [p for p in spec_pool if _load_ratio(p) < BLEND_THRESHOLD]
-
-                    if spec_not_overloaded:
-                        # Spec professors have good capacity — use only them
-                        eligible_profs = spec_not_overloaded
-                    elif spec_with_capacity:
-                        # Spec profs near limit — blend in least-loaded non-spec profs
-                        non_spec_light = sorted(non_spec, key=_load_ratio)[:2]
-                        eligible_profs = spec_with_capacity + non_spec_light
-                    else:
-                        # All spec professors at workload limit — non-spec fallback
-                        non_spec_sec = [p for p in non_spec if p.can_teach_section(sec)]
-                        eligible_profs = non_spec_sec or non_spec or spec_pool
-                else:
-                    # No specialized professor for this subject.
-                    # Pick from everyone, section-preferred first.
-                    # _assign_professor will pick lowest ratio among eligible.
-                    pref_all = [p for p in all_professors if p.can_teach_section(sec)]
-                    eligible_profs = pref_all or all_professors
-
-                # ── THEORY shared-professor logic ────────────────────────────
-                # Theory lectures are shared by G1 and G2 in the same classroom.
-                # Both sections MUST have the same professor — otherwise the
-                # timetable generator picks G1's professor for both, making G2's
-                # Subject.professors stale and causing workload report mismatches.
-                #
-                # Rule:
-                #   G1 → assigned normally (adds to workload)
-                #   G2 → reuses G1's professor WITHOUT adding extra workload
-                #         (it's the same physical lecture, not an extra session)
-                is_theory = sdef.get('subject_type') in ('THEORY', 'NPTEL')
-                theory_key = (
-                    getattr(sec, 'section_name', str(sec)),
-                    getattr(sec, 'year', ''),
-                    getattr(getattr(sec, 'course', None), 'name', ''),
-                    name,
-                )
-
-                if is_theory and sec.group != 'G1' and theory_key in theory_shared_prof:
-                    # Reuse G1's professor — same lecture, no extra workload
-                    shared_prof = theory_shared_prof[theory_key]
-                    subj.professors.set([shared_prof])
-                    if created_flag:
-                        counts['subjects'] += 1
-                    continue
-
-                if eligible_profs:
-                    chosen = _assign_professor(subj, sdef, sec, eligible_profs)
-                    if not chosen:
-                        warnings.append(
-                            "Subject '{}' ({}) — no professor found at all.".format(name, sec)
-                        )
-                    else:
-                        # Record G1's professor for G2 to reuse
-                        if is_theory and sec.group == 'G1':
-                            theory_shared_prof[theory_key] = chosen
-                else:
-                    warnings.append(
-                        "Subject '{}' ({}) — no professor found at all.".format(name, sec)
-                    )
-
                 if created_flag:
                     counts['subjects'] += 1
+                built_subjects.append(subj)
+        # Explicit-only professor assignment over exactly the subjects just built.
+        _link_explicit_professors(built_subjects, warnings)
+
+    elif 'professors' in files_dict and files_dict['professors']:
+        # Professors uploaded WITHOUT a subjects file: re-link teachers onto the
+        # EXISTING subjects so a professors-only upload still assigns everyone.
+        # Scoped to the uploading department when known (a Department Admin must
+        # never re-link another department’s subjects).
+        qs = Subject.objects.select_related('section__course__department')
+        if default_department is not None:
+            qs = qs.filter(section__course__department=default_department)
+        _link_explicit_professors(list(qs), warnings)
 
     return counts, errors, warnings

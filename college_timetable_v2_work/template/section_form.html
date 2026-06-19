@@ -68,24 +68,6 @@ main{flex:1;display:flex;align-items:center;justify-content:center;padding:48px 
 .group-check-item:has(input:checked){border-color:var(--blue);background:var(--blue-light);}
 .group-check-label{font-size:.88rem;font-weight:500;color:var(--text);}
 </style>
-<script>
-function toggleCustomYear() {
-  var y = document.getElementById('id_year').value;
-  var row = document.getElementById('custom-year-row');
-  row.classList.toggle('visible', y === 'CUSTOM');
-  if (y !== 'CUSTOM') document.getElementById('id_custom_year').value = '';
-}
-function toggleCustomSection() {
-  var s = document.getElementById('id_section_name').value;
-  var row = document.getElementById('custom-section-row');
-  row.classList.toggle('visible', s === 'CUSTOM');
-  if (s !== 'CUSTOM') document.getElementById('id_custom_section_name').value = '';
-}
-window.onload = function() {
-  toggleCustomYear();
-  toggleCustomSection();
-}
-</script>
 </head>
 <body>
 <nav>
@@ -105,8 +87,9 @@ window.onload = function() {
       </div>
     </div>
     <div class="info-box">
-      🎓 <strong>Default:</strong> Semesters 1–8, Sections A–E.<br>
-      Select <strong>Custom Semester</strong> or <strong>Custom Section</strong> to add an extra label or Section F.
+      🎓 <strong>Type any value or pick a suggestion.</strong> Semester, Section and Group
+      accept custom input — enter exactly what your CSV uses (e.g. <strong>3</strong>,
+      Section <strong>CS-1</strong>, <strong>COE</strong>) and it stays consistent across the app.
     </div>
     <form method="post">
       {% csrf_token %}
@@ -118,26 +101,16 @@ window.onload = function() {
       <hr class="section-divider">
       <div class="field">
         <label>Semester</label>
-        {{ form.year }}
-        <div class="help">Choose Semester 1–8. Use "Custom" only for a non-standard label.</div>
+        {{ form.year }}{{ form.custom_year }}
+        <div class="help">Type a semester (1–8) or any custom label — or pick from the list.</div>
         {% if form.year.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.year.errors.0 }}</div>{% endif %}
-      </div>
-      <div class="custom-row {% if form.initial.year == 'CUSTOM' or form.instance.year == 'CUSTOM' %}visible{% endif %}" id="custom-year-row">
-        <label>✏️ Custom Semester Label</label>
-        {{ form.custom_year }}
-        {% if form.custom_year.errors %}<div style="color:#92400e;font-size:.78rem;margin-top:4px;">{{ form.custom_year.errors.0 }}</div>{% endif %}
       </div>
       <hr class="section-divider">
       <div class="field">
         <label>Section</label>
-        {{ form.section_name }}
-        <div class="help">Default: Sections A–E. Choose "Custom Section" to add F, G, Alpha, etc.</div>
+        {{ form.section_name }}{{ form.custom_section_name }}
+        <div class="help">Type any section name (A–E, I, CS-1, COE…) or pick from the list.</div>
         {% if form.section_name.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.section_name.errors.0 }}</div>{% endif %}
-      </div>
-      <div class="custom-row {% if form.instance.section_name == 'CUSTOM' %}visible{% endif %}" id="custom-section-row">
-        <label>✏️ Custom Section Name</label>
-        {{ form.custom_section_name }}
-        {% if form.custom_section_name.errors %}<div style="color:#92400e;font-size:.78rem;margin-top:4px;">{{ form.custom_section_name.errors.0 }}</div>{% endif %}
       </div>
       <div class="field">
         <label>Group</label>
@@ -174,6 +147,13 @@ window.onload = function() {
         {{ form.free_day }}
         <div class="help">Optional: assign one weekly holiday to this section. No lectures will be scheduled on that day.</div>
         {% if form.free_day.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.free_day.errors.0 }}</div>{% endif %}
+      </div>
+      <hr class="section-divider">
+      <div class="field">
+        <label>🎓 Program / Branch</label>
+        {{ form.program }}
+        <div class="help">Student branch, e.g. CSE or COE. A subject reaches this section when the section's branch is one of the subject's Program_name branches.</div>
+        {% if form.program.errors %}<div style="color:var(--red);font-size:.78rem;margin-top:4px;">{{ form.program.errors.0 }}</div>{% endif %}
       </div>
       <hr class="section-divider">
       <div class="field">

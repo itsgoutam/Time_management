@@ -1,0 +1,20 @@
+Department_name,Room_id,Room_name,Room_type,Capacity,Allowed_Subjects
+Computer Science & Engineering,MB-301,Room MB-301,classroom,100,all
+Computer Science & Engineering,MB-302,Room MB-302,classroom,100,all
+Computer Science & Engineering,MB-303,Room MB-303,classroom,100,all
+Computer Science & Engineering,MB-304,Room MB-304,classroom,100,all
+Computer Science & Engineering,MB-313,Room MB-313,classroom,100,all
+Computer Science & Engineering,MB-314,E Classroom MB-314,classroom,100,all
+Computer Science & Engineering,MB-402,Room MB-402,classroom,100,all
+Computer Science & Engineering,MB-403,Room MB-403,classroom,100,all
+Computer Science & Engineering,MB-404,Room MB-404,classroom,100,all
+Computer Science & Engineering,PL-1,Python Lab (PL-1),lab,40,Programming in Python Lab
+Computer Science & Engineering,PL-2,OS Lab (PL-2),lab,40,Operating Systems Lab
+Computer Science & Engineering,DB-LAB,DB Lab,lab,40,Relational Database Management Systems Lab
+Computer Science & Engineering,RS-LAB,R&S Lab,lab,40,Web Development Lab
+Computer Science & Engineering,PL-3,ML Lab (PL-3),lab,40,Machine Learning Lab
+Computer Science & Engineering,BD-LAB,Big Data Lab,lab,40,Big Data Analytics Lab
+Computer Science & Engineering,CS-LAB,Cloud Computing Lab,lab,40,Cloud Computing Lab
+Computer Science & Engineering,PL-VI,MAD Lab (PL-VI),lab,40,Mobile Application Development Lab
+Computer Science & Engineering,PL-V,CV Lab (PL-V),lab,40,Computer Vision Lab
+Computer Science & Engineering,PL-IV,AIML Lab (PL-IV),lab,40,all

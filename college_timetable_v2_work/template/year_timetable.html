@@ -48,7 +48,7 @@ tbody tr:hover{background:#f5f8ff;}
 tbody td{padding:4px;vertical-align:middle;border-bottom:1px solid #eef2ff;width:120px;height:100px;}
 tbody td:first-child{padding:0;width:100px;min-width:100px;font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;color:var(--blue);text-align:center;vertical-align:middle;background:#f0f4ff;border-right:2px solid var(--border);}
 tbody tr:last-child td{border-bottom:none;}
-.cell{border-radius:9px;padding:8px 6px;width:100%;height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;}
+.cell{border-radius:9px;padding:8px 6px;width:100%;min-height:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;}
 .cell-theory{background:var(--theory-bg);border:1.5px solid var(--theory-border);}
 .cell-lab{background:var(--lab-bg);border:1.5px solid var(--lab-border);}
 .cell-tut{background:var(--tut-bg);border:1.5px solid var(--tut-border);}
@@ -56,6 +56,8 @@ tbody tr:last-child td{border-bottom:none;}
 .cell-elec .cell-code{background:#ffedd5;color:#c2410c;}
 .cell-elec .cell-name{color:#c2410c;}
 .cell-elec .cell-badge{background:#ffedd5;color:#c2410c;}
+td{vertical-align:top;}
+.cell-name,.cell-prof,.cell-room,.cell-code{overflow-wrap:anywhere;word-break:break-word;white-space:normal;max-width:100%;}
 .cell-empty{background:#fafbff;border:1.5px solid #eef2ff;}
 .cell-lunch{background:var(--lunch-bg);border:1.5px solid var(--lunch-border);align-items:center;justify-content:center;}
 .cell-name{font-size:.78rem;font-weight:700;line-height:1.3;}

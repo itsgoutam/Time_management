@@ -11,6 +11,7 @@ urlpatterns = [
     path('accounts/<int:account_id>/delete/', auth_views.delete_account, name='delete_account'),
 
     path('', views.dashboard, name='dashboard'),
+    path('delete-all/', views.delete_all, name='delete_all'),
 
     # Department
     path('add-department/', views.add_department, name='add_department'),
@@ -86,6 +87,8 @@ urlpatterns = [
     # CSV Upload & Templates
     path('csv-upload/', views.csv_upload, name='csv_upload'),
     path('csv-template/<str:template_name>/', views.csv_download_template, name='csv_download_template'),
+    # Dedicated Excel route — more reliable than a ?format= query string in browsers.
+    path('csv-template/<str:template_name>/<str:fmt>/', views.csv_download_template, name='csv_download_template_fmt'),
 
     # Combine Edit
     path('combine-edit/', views.combine_edit, name='combine_edit'),
@@ -95,6 +98,9 @@ urlpatterns = [
     # Workload Report
     path('workload-report/', views.workload_report, name='workload_report'),
     path('workload-report/csv/', views.workload_report_csv, name='workload_report_csv'),
+
+    # Timetable validation (conflict report)
+    path('validate-timetable/', views.validate_timetable, name='validate_timetable'),
 
     # ── FREE ROOMS & LABS (add-on module) ──────────────────────────────────
     path('free-rooms/', views.free_rooms, name='free_rooms'),

@@ -341,12 +341,16 @@ table(['Column', 'Meaning / example'], [
 
 doc.add_heading('Professors', level=2)
 table(['Column', 'Meaning / example'], [
-    ['Department Name', 'The professor’s department.'],
-    ['Teacher_id', 'Unique ID — also the professor’s login password, e.g. CS001.'],
+    ['Department_name', 'The professor’s department.'],
+    ['Teacher_id', 'Unique ID — also the professor’s login password, e.g. CS-AJS.'],
     ['Teacher_name', 'Full name — the professor’s login username.'],
     ['Max_Workload_Hours_per_week', 'Maximum teaching hours per week (state once per teacher).'],
-    ['Subject Name', 'A subject this teacher can teach (one per row; repeat the teacher on more rows).'],
-    ['Dept Name, Prog Name, Sem, Sec', 'The specific class this row applies to (optional).'],
+    ['Subject Name', 'A subject this teacher takes (one per row; repeat the teacher on more rows).'],
+    ['Program_name', 'Branch the teacher serves, e.g. CSE or “CSE,COE”.'],
+    ['Course_name', 'Degree, e.g. B.TECH or M.TECH.'],
+    ['Semester', 'Semester of the class, e.g. 6th.'],
+    ['Section', 'Section name, e.g. CS-1.'],
+    ['Group', 'G1, G2 or “G1,G2” for both. A different teacher may be named per group.'],
     ['Block_time_slot(day/time)', 'Unavailable time, e.g. “Tuesday,9:50 to 11:30” (optional). Use | for several.'],
     ['Fixed_time_slot(day/time)', 'Must-teach time, e.g. “Wednesday,9:50 to 11:30” (optional).'],
 ], widths=[2.7, 4.0])
@@ -381,11 +385,13 @@ table(['Column', 'Meaning / example'], [
     ['Subject_id', 'Subject code, e.g. AGCS-21301.'],
     ['Subject_Name', 'Subject name, e.g. DBMS.'],
     ['Sub_type', 'REGULAR, ELECTIVE or NPTEL.'],
-    ['Theory_per_week', 'Theory periods per week.'],
-    ['Tutorial_per_week', 'Tutorial periods per week.'],
-    ['Lab_per_week', 'Lab sessions per week (each is a 2-slot block).'],
+    ['Theory_per_week_per_section', 'Theory periods per week (shared by both groups of the section). For NPTEL rows this is the weekly NPTEL session count.'],
+    ['Tutorial_per_week_per_group', 'Tutorial sessions per week, per group.'],
+    ['Lab_per_week_per_group', 'Lab sessions per week, per group (each is a 2-slot block; e.g. 1, or 2 for a major project).'],
     ['Allowed_groups', 'Which groups take it, e.g. “G1 G2” or a single “G1”.'],
-    ['Course / Program Name / Semester', 'Which class the subject belongs to.'],
+    ['Course_name', 'Degree the subject belongs to, e.g. B.TECH.'],
+    ['Program_name', 'Branch, e.g. CSE.'],
+    ['Semester', 'Semester of the class, e.g. 4th.'],
 ], widths=[2.7, 4.0])
 
 doc.add_paragraph()

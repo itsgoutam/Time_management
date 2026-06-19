@@ -25,7 +25,11 @@ SLOT_TIMES = {
 # NPTEL scheduled after lunch — slot 6 (1:10-2:00) is first post-lunch slot,
 # slots 7,8,9 are after 2PM. All are valid. Sorted asc so slot 6 fills first.
 NPTEL_SLOTS = [6, 7, 8, 9]
-LAB_FORBIDDEN_START = [5, 8, 9]
+# A lab is a 2-slot block. Forbidden START slots: 5 (its 2nd slot 6 is lunch) and 9
+# (no slot 10). Slot 8 IS allowed → the (8,9) afternoon block (2:50–4:30) is used as
+# overflow capacity so labs spread off the saturated mid-day slots instead of going
+# roomless. Load-balancing keeps it a last-resort, not a default.
+LAB_FORBIDDEN_START = [5, 9]
 GROUP_ONE_LAB_STARTS = [1, 3, 6, 7]    # G1: pre-lunch preferred, post-lunch fallback
 GROUP_TWO_LAB_STARTS = [1, 3, 6, 7]    # G2: pre-lunch first, post-lunch fallback
 # Both groups prefer pre-lunch labs so partner tutorials also stay pre-lunch.
@@ -105,7 +109,91 @@ def _scope_form_to_dept(request, form):
         f['professor'].queryset = f['professor'].queryset.filter(department_id=dept_id)
 
 
+# ─── Shared professor scoping helpers ─────────────────────────────────────────
+
+def _professors_for_dept(dept_id):
+    """Professors belonging to a department — via the shared `departments` mapping
+    OR the home-department FK. Used for visibility, override and scoped deletion."""
+    from django.db.models import Q
+    return Professor.objects.filter(
+        Q(departments__id=dept_id) | Q(department_id=dept_id)).distinct()
+
+
+def _purge_professors_for_scope(dept_id):
+    """Remove a scope's professors ahead of a fresh import / Delete All.
+
+    Shared professors (mapped to other departments too) only lose THIS department's
+    mapping and are kept for the others; a professor left with no department at all
+    is deleted (cascading its assignments / blocked & fixed times). dept_id=None
+    (full Admin) removes every professor.
+    """
+    if dept_id is None:
+        Professor.objects.all().delete()
+        return
+    for p in list(_professors_for_dept(dept_id)):
+        p.departments.remove(dept_id)
+        remaining = list(p.departments.all())
+        if p.department_id == dept_id:
+            # Re-home to a still-mapped department, if any.
+            p.department = remaining[0] if remaining else None
+            p.save(update_fields=['department'])
+        if not remaining and not p.department_id:
+            p.delete()
+
+
 # ─── Dashboard ────────────────────────────────────────────────────────────────
+
+def delete_all(request):
+    """Delete-all, scoped by role.
+
+    • Department Admin → deletes ONLY their own department's sections, subjects,
+      rooms and professors (and the resulting timetable). Department settings,
+      other departments' data and login accounts are never touched. Req 3.
+    • Full Admin → deletes all professors and rooms and clears the timetable
+      (departments, sections, subjects and accounts are kept), as before.
+    Backend enforces the scope — it never trusts the frontend.
+    """
+    role = acc.current_role(request)
+    if role not in (acc.ADMIN, acc.DEPT_ADMIN):
+        return HttpResponseForbidden('You do not have permission to delete data.')
+    if request.method != 'POST':
+        return redirect('dashboard')
+
+    dept_id = acc.current_department_id(request)
+    if role == acc.DEPT_ADMIN and dept_id:
+        # Strictly own-department deletion. Verify ownership on the backend.
+        sec_scope  = Section.objects.filter(course__department_id=dept_id)
+        subj_scope = Subject.objects.filter(section__course__department_id=dept_id)
+        room_scope = Room.objects.filter(department_id=dept_id)
+        ts_scope   = TimeSlot.objects.filter(section__course__department_id=dept_id)
+        ns = sec_scope.count(); nsub = subj_scope.count()
+        nr = room_scope.count(); nts = ts_scope.count()
+        np = _professors_for_dept(dept_id).count()
+        ts_scope.delete()
+        sec_scope.delete()          # cascades any remaining subjects + timeslots
+        subj_scope.delete()         # section-less subjects in this dept (defensive)
+        room_scope.delete()
+        _purge_professors_for_scope(dept_id)
+        messages.warning(
+            request,
+            f'🗑️ Deleted your department\'s data: {np} professors, {nr} rooms, '
+            f'{ns} sections, {nsub} subjects and {nts} timetable slots. '
+            f'Department settings and other departments were not affected.')
+        return redirect('dashboard')
+
+    # Full Admin (no department) — global wipe of professors + rooms + timetable.
+    nts = TimeSlot.objects.count()
+    np = Professor.objects.count()
+    nr = Room.objects.count()
+    TimeSlot.objects.all().delete()      # the generated timetable
+    Professor.objects.all().delete()     # cascades assignments, fixed/blocked times
+    Room.objects.all().delete()
+    messages.warning(
+        request,
+        f'🗑️ Deleted {np} professors and {nr} rooms, and cleared the timetable ({nts} slots). '
+        f'Departments, sections, subjects and accounts were kept.')
+    return redirect('dashboard')
+
 
 def dashboard(request):
     # Route non-staff roles to their own landing page.
@@ -136,10 +224,14 @@ def dashboard(request):
         from django.db.models import Q
         own_or_unassigned = Q(department_id=dept_id) | Q(department__isnull=True)
         departments = departments.filter(id=dept_id)
-        # Include unassigned professors/rooms so the admin can claim/manage them.
-        professors = professors.filter(own_or_unassigned)
+        # Professors: own home dept, SHARED (mapped via departments M2M to this dept),
+        # or still-unassigned (so the admin can claim them). Shared professors are
+        # therefore visible to every department they are mapped to. Req 5.
+        prof_visible = Q(department_id=dept_id) | Q(departments__id=dept_id) | Q(department__isnull=True)
+        professors = professors.filter(prof_visible).distinct()
         subjects = subjects.filter(section__course__department_id=dept_id)
         sections = sections.filter(course__department_id=dept_id)
+        # Include unassigned rooms so the admin can claim/manage them.
         rooms = rooms.filter(own_or_unassigned)
 
     classrooms = rooms.filter(room_type='CLASSROOM')
@@ -343,6 +435,7 @@ def add_section(request):
                     custom_year=base.custom_year,
                     custom_section_name=custom_sec,
                     group=grp,
+                    program=base.program,
                     fixed_room=base.fixed_room,
                     free_day=base.free_day,
                     section_start_slot=base.section_start_slot,
@@ -759,12 +852,31 @@ def professor_schedule(request, professor_id):
             seen = {}
             deduped = []
             for ts in entries:
-                key = ts.subject_id
+                st_ = ts.subject.subject_type
+                # Theory/NPTEL are ONE shared lecture — merge all groups (and any
+                # co-taught sections) of the same subject into a single entry.
+                # Labs/tutorials are per group, so keep them as distinct entries.
+                if st_ in ('THEORY', 'NPTEL'):
+                    key = ('shared', ts.subject.name)
+                else:
+                    key = ('grp', ts.subject_id)
                 if key not in seen:
-                    seen[key] = {'ts': ts, 'sections': [ts.section]}
+                    seen[key] = {'ts': ts, 'sections': [ts.section],
+                                 '_secs': {ts.section.get_effective_section_name()}}
                     deduped.append(seen[key])
                 else:
-                    seen[key]['sections'].append(ts.section)
+                    eff = ts.section.get_effective_section_name()
+                    # Req 7 — Theory display rules:
+                    #   • Plain THEORY/NPTEL → show only ONE assigned section.
+                    #   • ELECTIVE → list ALL eligible sections.
+                    #   • LAB / TUTORIAL → keep per-group entries (unchanged).
+                    is_elective = getattr(ts.subject, 'is_elective', False)
+                    is_plain_theory = st_ in ('THEORY', 'NPTEL') and not is_elective
+                    if is_plain_theory:
+                        continue   # one section only — ignore the rest
+                    if eff not in seen[key]['_secs']:
+                        seen[key]['_secs'].add(eff)
+                        seen[key]['sections'].append(ts.section)
             is_lab_pair = False
             if deduped and deduped[0]['ts'].subject.subject_type == 'LAB':
                 next_slot = SLOTS[i + 1] if i + 1 < len(SLOTS) else None
@@ -777,16 +889,14 @@ def professor_schedule(request, professor_id):
                 cells.append({'entries': deduped, 'colspan': 1, 'skip': False, 'occupied': occ, 'fixed': fx})
         table[day] = cells
 
-    total_slots = sum(1 for d in DAYS for c in table[d] if not c['skip'] and c['entries'])
-    total_theory = sum(1 for d in DAYS for c in table[d]
-                       if not c['skip'] and c['entries']
-                       and c['entries'][0]['ts'].subject.subject_type in ('THEORY', 'NPTEL'))
-    total_lab = sum(1 for d in DAYS for c in table[d]
-                    if not c['skip'] and c['entries']
-                    and c['entries'][0]['ts'].subject.subject_type == 'LAB')
-    total_tutorial = sum(1 for d in DAYS for c in table[d]
-                         if not c['skip'] and c['entries']
-                         and c['entries'][0]['ts'].subject.subject_type == 'TUTORIAL')
+    # Count EVERY entry in a cell (a slot can legitimately hold more than one —
+    # e.g. two NPTEL/electives running in parallel), not just the first.
+    _all_entries = [e for d in DAYS for c in table[d]
+                    if not c['skip'] for e in c['entries']]
+    total_slots    = sum(1 for d in DAYS for c in table[d] if not c['skip'] and c['entries'])
+    total_theory   = sum(1 for e in _all_entries if e['ts'].subject.subject_type in ('THEORY', 'NPTEL'))
+    total_lab      = sum(1 for e in _all_entries if e['ts'].subject.subject_type == 'LAB')
+    total_tutorial = sum(1 for e in _all_entries if e['ts'].subject.subject_type == 'TUTORIAL')
     # ── Workload breakdown — Contact Hours ───────────────────────────────────
     # 1 slot = 1 contact hour (standard academic convention)
     # Theory / NPTEL / Tutorial = 1 slot = 1 contact hr per session
@@ -885,16 +995,17 @@ def year_timetable(request, course_id, year):
                     skip_next = False
                     cells.append({'entry': None, 'colspan': 1, 'skip': True, 'slot': slot})
                     continue
-                entry = TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').first()
+                entries = list(TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').order_by('id'))
+                entry = entries[0] if entries else None
                 if entry and entry.subject.subject_type == 'LAB':
                     next_slot = SLOTS[i + 1] if i + 1 < len(SLOTS) else None
                     if next_slot:
                         next_entry = TimeSlot.objects.filter(day=day, slot=next_slot, section=section).first()
                         if next_entry and next_entry.subject == entry.subject:
-                            cells.append({'entry': entry, 'colspan': 2, 'skip': False, 'slot': slot})
+                            cells.append({'entry': entry, 'entries': entries, 'colspan': 2, 'skip': False, 'slot': slot})
                             skip_next = True
                             continue
-                cells.append({'entry': entry, 'colspan': 1, 'skip': False, 'slot': slot})
+                cells.append({'entry': entry, 'entries': entries, 'colspan': 1, 'skip': False, 'slot': slot})
             table[day] = cells
         section_tables.append({'section': section, 'table': table})
     year_display = dict(Section.YEAR_CHOICES).get(year, year)
@@ -919,16 +1030,17 @@ def section_timetable(request, section_id):
                 skip_next = False
                 cells.append({'entry': None, 'colspan': 1, 'skip': True, 'slot': slot})
                 continue
-            entry = TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').first()
+            entries = list(TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').order_by('id'))
+            entry = entries[0] if entries else None
             if entry and entry.subject.subject_type == 'LAB':
                 next_slot = SLOTS[i + 1] if i + 1 < len(SLOTS) else None
                 if next_slot:
                     next_entry = TimeSlot.objects.filter(day=day, slot=next_slot, section=section).first()
                     if next_entry and next_entry.subject == entry.subject:
-                        cells.append({'entry': entry, 'colspan': 2, 'skip': False, 'slot': slot})
+                        cells.append({'entry': entry, 'entries': entries, 'colspan': 2, 'skip': False, 'slot': slot})
                         skip_next = True
                         continue
-            cells.append({'entry': entry, 'colspan': 1, 'skip': False, 'slot': slot})
+            cells.append({'entry': entry, 'entries': entries, 'colspan': 1, 'skip': False, 'slot': slot})
         table[day] = cells
     import base64
     qr_url = request.build_absolute_uri(f'/timetable/{section_id}/')
@@ -964,16 +1076,17 @@ def section_combined_timetable(request, course_id, year, section_name):
                     skip_next = False
                     cells.append({'entry': None, 'colspan': 1, 'skip': True, 'slot': slot})
                     continue
-                entry = TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').first()
+                entries = list(TimeSlot.objects.filter(day=day, slot=slot, section=section).select_related('subject', 'professor', 'room').order_by('id'))
+                entry = entries[0] if entries else None
                 if entry and entry.subject.subject_type == 'LAB':
                     next_slot = SLOTS[i + 1] if i + 1 < len(SLOTS) else None
                     if next_slot:
                         next_entry = TimeSlot.objects.filter(day=day, slot=next_slot, section=section).first()
                         if next_entry and next_entry.subject == entry.subject:
-                            cells.append({'entry': entry, 'colspan': 2, 'skip': False, 'slot': slot})
+                            cells.append({'entry': entry, 'entries': entries, 'colspan': 2, 'skip': False, 'slot': slot})
                             skip_next = True
                             continue
-                cells.append({'entry': entry, 'colspan': 1, 'skip': False, 'slot': slot})
+                cells.append({'entry': entry, 'entries': entries, 'colspan': 1, 'skip': False, 'slot': slot})
             table[day] = cells
         group_tables.append({'section': section, 'table': table})
     year_display = dict(Section.YEAR_CHOICES).get(year, year)
@@ -1447,6 +1560,17 @@ def generate_timetable(request):
 
 # ─── PDF / QR Exports (unchanged) ────────────────────────────────────────────
 
+def _room_label(name):
+    """Prefix a room name with 'Room ' unless the name already says so
+    (avoids 'Room Room 201' for rooms named like 'Room 201')."""
+    n = (name or '').strip()
+    if not n:
+        return ''
+    if n.lower().startswith(('room', 'rm', 'lab', 'hall', 'block', 'studio', 'theatre', 'theater')):
+        return n
+    return f'Room {n}'
+
+
 def _get_pdf_styles():
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
@@ -1489,89 +1613,88 @@ def _pdf_slot_to_col(slot):
     return slot if slot <= 5 else slot + 1
 
 
-def _build_pdf_table(data, label, styles_map):
+def _build_pdf_table(data, label, styles_map, lunch_slots=None):
     """Beautiful section timetable table with lab colspan.
     data[day][slot] = single TimeSlot object or None.
+    lunch_slots: the department's configured lunch slot(s); that slot's own column
+    is shown as "Lunch" (no separate inserted column → no duplicate 1:10–2:00).
     """
     from reportlab.platypus import Table, TableStyle, Paragraph
     from reportlab.lib import colors
     from reportlab.lib.units import cm
 
+    lunch_slots = set(lunch_slots) if lunch_slots else {6}
     BLUE      = colors.HexColor('#1565c0')
-    NAVY      = colors.HexColor('#1e3a5f')
-    THEORY_BG = colors.HexColor('#EFF6FF'); THEORY_BD = colors.HexColor('#BFDBFE')
-    LAB_BG    = colors.HexColor('#F0FDF4'); LAB_BD    = colors.HexColor('#86EFAC')
-    TUT_BG    = colors.HexColor('#FDF4FF'); TUT_BD    = colors.HexColor('#E9D5FF')
+    THEORY_BG = colors.HexColor('#EFF6FF')
+    LAB_BG    = colors.HexColor('#F0FDF4')
+    TUT_BG    = colors.HexColor('#FDF4FF')
     NPTEL_BG  = colors.HexColor('#FEF3C7')
     LUNCH_BG  = colors.HexColor('#FFF7ED')
     DAY_BG    = colors.HexColor('#F1F5F9')
     EMPTY_COL = colors.HexColor('#F8FAFC')
     GRID_COL  = colors.HexColor('#E2E8F0')
 
-    TYPE_LABEL = {'LAB':'🔬 LAB','TUTORIAL':'📘 TUT','NPTEL':'📡 NPTEL','THEORY':'📖 THEORY'}
+    TYPE_LABEL = {'LAB':'LAB','TUTORIAL':'TUTORIAL','NPTEL':'NPTEL','THEORY':'THEORY'}
 
     def _bg(st):
         return LAB_BG if st=='LAB' else TUT_BG if st=='TUTORIAL' else NPTEL_BG if st=='NPTEL' else THEORY_BG
 
-    slot_labels = (["Day"] + [SLOT_TIMES[s] for s in SLOTS[:5]] +
-                   ["Lunch\n1:10–2:00"] + [SLOT_TIMES[s] for s in SLOTS[5:]])
+    # One column per slot (Day=col 0, slot N=col N); lunch slot labelled "Lunch <time>".
+    slot_labels = ["Day"] + [
+        (f"Lunch\n{SLOT_TIMES[s]}" if s in lunch_slots else SLOT_TIMES[s]) for s in SLOTS]
     header_row = [Paragraph(s.replace('\n','<br/>'), styles_map['head']) for s in slot_labels]
     rows = [header_row]
-    bg_cmds   = [('BACKGROUND',(0,0),(-1,0),BLUE),
-                 ('BACKGROUND',(6,1),(6,len(DAYS)),LUNCH_BG),
-                 ('BACKGROUND',(0,1),(0,-1),DAY_BG)]
+    bg_cmds   = [('BACKGROUND',(0,0),(-1,0),BLUE), ('BACKGROUND',(0,1),(0,-1),DAY_BG)]
     span_cmds = []
+    lunch_cols = [s for s in SLOTS if s in lunch_slots]
 
     for ri, day in enumerate(DAYS, start=1):
         row = [Paragraph(f"<b>{day[:3]}</b>", styles_map['day'])]
         skip_next = False
         for slot in SLOTS:
-            if slot == 6:
-                row.append(Paragraph("🍽<br/><b>Lunch</b>", styles_map['prof']))
+            ci = slot   # direct: slot N -> column N
             if skip_next:
                 skip_next = False
+                row.append('')   # placeholder for the spanned (merged) cell
                 continue
-            ci   = _pdf_slot_to_col(slot)
+            if slot in lunch_slots:
+                row.append(Paragraph("<b>Lunch</b>", styles_map['prof']))
+                bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),LUNCH_BG))
+                continue
             ts   = data[day][slot]
-            # Lab colspan check
             next_slot = slot + 1 if slot < 9 else None
-            next_ts   = data[day][next_slot] if next_slot and next_slot != 6 else None
+            next_ts   = data[day][next_slot] if (next_slot and next_slot not in lunch_slots) else None
             is_lab_span = (ts and next_ts and
                            ts.subject.subject_type == 'LAB' and
                            next_ts.subject.subject_type == 'LAB' and
                            ts.subject_id == next_ts.subject_id and
-                           ts.section_id == next_ts.section_id and
-                           slot != 5)
+                           ts.section_id == next_ts.section_id)
             if ts:
                 st = ts.subject.subject_type
-                bg = _bg(st)
                 content = []
                 if ts.subject.code:
                     content.append(Paragraph(f"<b>{ts.subject.code}</b>", styles_map['prof']))
                 content.append(Paragraph(f"<b>{ts.subject.name}</b>", styles_map['cell']))
                 content.append(Paragraph(ts.professor.name, styles_map['prof']))
                 if ts.room:
-                    content.append(Paragraph(f"🚪 {ts.room.name}", styles_map['prof']))
+                    content.append(Paragraph(_room_label(ts.room.name), styles_map['prof']))
                 content.append(Paragraph(TYPE_LABEL.get(st, st), styles_map['type_tag']))
                 row.append(content)
-                bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),bg))
+                bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),_bg(st)))
                 if is_lab_span:
-                    ci_next = _pdf_slot_to_col(next_slot)
-                    span_cmds.append(('SPAN',(ci,ri),(ci_next,ri)))
+                    span_cmds.append(('SPAN',(ci,ri),(slot+1,ri)))
                     skip_next = True
             else:
                 row.append(Paragraph("—", styles_map['prof']))
                 bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),EMPTY_COL))
         rows.append(row)
 
-    col_widths  = [1.7*cm] + [2.6*cm]*5 + [1.8*cm] + [2.6*cm]*4
+    col_widths  = [1.7*cm] + [2.4*cm]*9
     row_heights = [1.0*cm] + [2.2*cm]*len(DAYS)
     t = Table(rows, colWidths=col_widths, rowHeights=row_heights)
-    t.setStyle(TableStyle([
+    style = [
         ('GRID',          (0,0),(-1,-1), 0.5, GRID_COL),
         ('BOX',           (0,0),(-1,-1), 1.2, BLUE),
-        ('LINEBEFORE',    (6,0),(6,-1),  1.0, colors.HexColor('#fed7aa')),
-        ('LINEAFTER',     (6,0),(6,-1),  1.0, colors.HexColor('#fed7aa')),
         ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
         ('ALIGN',         (0,0),(-1,-1), 'CENTER'),
         ('TOPPADDING',    (0,0),(-1,-1), 4),
@@ -1582,7 +1705,11 @@ def _build_pdf_table(data, label, styles_map):
         ('FONTNAME',      (0,0),(-1,0),  'Helvetica-Bold'),
         ('FONTSIZE',      (0,0),(-1,0),  7),
         ('TEXTCOLOR',     (0,0),(-1,0),  colors.white),
-    ] + bg_cmds + span_cmds))
+    ]
+    for lc in lunch_cols:
+        style += [('LINEBEFORE',(lc,0),(lc,-1),1.0,colors.HexColor('#fed7aa')),
+                  ('LINEAFTER', (lc,0),(lc,-1),1.0,colors.HexColor('#fed7aa'))]
+    t.setStyle(TableStyle(style + bg_cmds + span_cmds))
     return t
 
 
@@ -1605,7 +1732,7 @@ def export_pdf(request, section_id):
         Paragraph(label, styles_map['title']),
         Paragraph("Auto-generated Weekly Timetable", styles_map['sub']),
         HRFlowable(width="100%", thickness=1, color=colors.HexColor('#1565c0'), spaceAfter=8),
-        _build_pdf_table(data, label, styles_map),
+        _build_pdf_table(data, label, styles_map, _get_lunch_slots(section.course.department_id)),
     ]
     doc.build(elements)
     buffer.seek(0)
@@ -1631,7 +1758,7 @@ def export_year_pdf(request, course_id, year):
             elements.append(PageBreak())
         label = f"{course.department.name} — {course.get_display_name()} — {year_display} — {section.group}"
         data = _build_tt_data(section)
-        elements += [Paragraph(label, styles_map['title']), Paragraph("Auto-generated Weekly Timetable", styles_map['sub']), _build_pdf_table(data, label, styles_map)]
+        elements += [Paragraph(label, styles_map['title']), Paragraph("Auto-generated Weekly Timetable", styles_map['sub']), _build_pdf_table(data, label, styles_map, _get_lunch_slots(section.course.department_id))]
     doc.build(elements)
     buffer.seek(0)
     fname = f"timetable_{course.department.name}_{year_display}_all.pdf".replace(' ', '_')
@@ -1645,8 +1772,13 @@ def export_section_combined_pdf(request, course_id, year, section_name):
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from django.db.models import Q
     course = get_object_or_404(Course, id=course_id)
-    groups = list(Section.objects.filter(course=course, year=year, section_name=section_name).order_by('group'))
+    # Custom section names (e.g. 'CS-1', 'I', 'COE') are stored as CUSTOM +
+    # custom_section_name, so match either the standard name or the custom one.
+    groups = list(Section.objects.filter(course=course, year=year).filter(
+        Q(section_name=section_name) | Q(section_name='CUSTOM', custom_section_name=section_name)
+    ).order_by('group'))
     year_display = dict(Section.YEAR_CHOICES).get(year, year)
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=1*cm, rightMargin=1*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
@@ -1657,7 +1789,7 @@ def export_section_combined_pdf(request, course_id, year, section_name):
     for i, section in enumerate(groups):
         label = f"Group {section.group}"
         data = _build_tt_data(section)
-        elements += [Paragraph(label, styles_map['section_title']), _build_pdf_table(data, label, styles_map), Spacer(1, 0.3*cm)]
+        elements += [Paragraph(label, styles_map['section_title']), _build_pdf_table(data, label, styles_map, _get_lunch_slots(section.course.department_id)), Spacer(1, 0.3*cm)]
     if not groups:
         elements = [Paragraph("No timetable data found.", styles_map['sub'])]
     doc.build(elements)
@@ -1765,7 +1897,7 @@ def _build_combined_pdf_table(g1_data, g2_data, styles_map):
             else:
                 row.append(Paragraph("—", s_info))
             if slot == 5:
-                row.append(Paragraph("🍽 Lunch", s_info))
+                row.append(Paragraph("Lunch", s_info))
         rows.append(row)
 
     col_widths = [1.8*cm] + [2.9*cm]*5 + [1.6*cm] + [2.9*cm]*2
@@ -1784,15 +1916,17 @@ def _build_combined_pdf_table(g1_data, g2_data, styles_map):
     return t
 
 
-def _build_prof_room_pdf_table(raw, styles_map, hdr_color_hex='#1565c0', is_list=True):
+def _build_prof_room_pdf_table(raw, styles_map, hdr_color_hex='#1565c0', is_list=True, lunch_slots=None):
     """Beautiful professor/room timetable table with lab colspan.
     is_list=True  → raw[day][slot] = list of TimeSlot
     is_list=False → raw[day][slot] = single TimeSlot or None
+    lunch_slots: the configured lunch slot(s); that slot's own column shows "Lunch".
     """
     from reportlab.platypus import Table, TableStyle, Paragraph
     from reportlab.lib import colors
     from reportlab.lib.units import cm
 
+    lunch_slots = set(lunch_slots) if lunch_slots else {6}
     HDR       = colors.HexColor(hdr_color_hex)
     THEORY_BG = colors.HexColor('#EFF6FF')
     LAB_BG    = colors.HexColor('#F0FDF4')
@@ -1802,7 +1936,7 @@ def _build_prof_room_pdf_table(raw, styles_map, hdr_color_hex='#1565c0', is_list
     DAY_BG    = colors.HexColor('#F1F5F9')
     EMPTY_COL = colors.HexColor('#F8FAFC')
     GRID_COL  = colors.HexColor('#E2E8F0')
-    TYPE_LABEL = {'LAB':'🔬 LAB','TUTORIAL':'📘 TUT','NPTEL':'📡 NPTEL','THEORY':'📖 THEORY'}
+    TYPE_LABEL = {'LAB':'LAB','TUTORIAL':'TUTORIAL','NPTEL':'NPTEL','THEORY':'THEORY'}
 
     def _get(day, slot):
         val = raw[day][slot]
@@ -1813,82 +1947,85 @@ def _build_prof_room_pdf_table(raw, styles_map, hdr_color_hex='#1565c0', is_list
     def _bg(st):
         return LAB_BG if st=='LAB' else TUT_BG if st=='TUTORIAL' else NPTEL_BG if st=='NPTEL' else THEORY_BG
 
-    slot_labels = (["Day"] + [SLOT_TIMES[s] for s in SLOTS[:5]] +
-                   ["Lunch\n1:10–2:00"] + [SLOT_TIMES[s] for s in SLOTS[5:]])
+    slot_labels = ["Day"] + [
+        (f"Lunch\n{SLOT_TIMES[s]}" if s in lunch_slots else SLOT_TIMES[s]) for s in SLOTS]
     rows = [[Paragraph(s.replace('\n','<br/>'), styles_map['head']) for s in slot_labels]]
-    bg_cmds   = [('BACKGROUND',(0,0),(-1,0),HDR),
-                 ('BACKGROUND',(6,1),(6,len(DAYS)),LUNCH_BG),
-                 ('BACKGROUND',(0,1),(0,-1),DAY_BG)]
+    bg_cmds   = [('BACKGROUND',(0,0),(-1,0),HDR), ('BACKGROUND',(0,1),(0,-1),DAY_BG)]
     span_cmds = []
+    lunch_cols = [s for s in SLOTS if s in lunch_slots]
 
     for ri, day in enumerate(DAYS, start=1):
         row = [Paragraph(f"<b>{day[:3]}</b>", styles_map['day'])]
         skip_next = False
         for slot in SLOTS:
-            if slot == 6:
-                row.append(Paragraph("🍽<br/><b>Lunch</b>", styles_map['prof']))
+            ci = slot   # direct: slot N -> column N
             if skip_next:
                 skip_next = False
+                row.append('')   # placeholder for the spanned (merged) cell
                 continue
-            ci      = _pdf_slot_to_col(slot)
+            if slot in lunch_slots:
+                row.append(Paragraph("<b>Lunch</b>", styles_map['prof']))
+                bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),LUNCH_BG))
+                continue
             entries = _get(day, slot)
             next_slot    = slot + 1 if slot < 9 else None
-            next_entries = _get(day, next_slot) if next_slot and next_slot != 6 else []
+            next_entries = _get(day, next_slot) if (next_slot and next_slot not in lunch_slots) else []
             is_lab_span  = (entries and next_entries and
                             entries[0].subject.subject_type == 'LAB' and
                             next_entries[0].subject.subject_type == 'LAB' and
-                            entries[0].subject_id == next_entries[0].subject_id and
-                            slot != 5)
+                            entries[0].subject_id == next_entries[0].subject_id)
             if entries:
                 ts = entries[0]
                 st = ts.subject.subject_type
-                # Section label
-                if ts.section:
-                    sec_lbl = (f"{ts.section.course.department.name} · "
-                               f"{ts.section.get_year_display_label()} · "
-                               f"Sec {ts.section.get_effective_section_name()} · {ts.section.group}")
-                else:
-                    sec_lbl = ""
-                # Multiple sections (professor view)
-                if len(entries) > 1:
-                    seen = set()
-                    parts = []
-                    for t2 in entries:
-                        if t2.section:
-                            lbl = f"{t2.section.course.department.name}·{t2.section.get_year_display_label()}·{t2.section.group}"
-                            if lbl not in seen:
-                                seen.add(lbl)
-                                parts.append(lbl)
-                    sec_lbl = ", ".join(parts)
+                # Compact section label — co-taught groups of the same
+                # semester+section collapse to "Sem 4 · CS-1 (G1, G2)".
+                groups_by_key = {}
+                for t2 in entries:
+                    if not t2.section:
+                        continue
+                    key = (t2.section.get_year_display_label(),
+                           t2.section.get_effective_section_name())
+                    groups_by_key.setdefault(key, [])
+                    if t2.section.group and t2.section.group not in groups_by_key[key]:
+                        groups_by_key[key].append(t2.section.group)
+                parts = []
+                for (yr, sec), grps in groups_by_key.items():
+                    lbl = f"{yr} · Sec {sec}"
+                    if grps:
+                        lbl += f" ({', '.join(sorted(grps))})"
+                    parts.append(lbl)
+                sec_lbl = "<br/>".join(parts)
                 content = []
                 if ts.subject.code:
                     content.append(Paragraph(f"<b>{ts.subject.code}</b>", styles_map['prof']))
                 content.append(Paragraph(f"<b>{ts.subject.name}</b>", styles_map['cell']))
                 if hasattr(ts, 'professor') and ts.professor:
-                    content.append(Paragraph(f"👤 {ts.professor.name}", styles_map['prof']))
+                    content.append(Paragraph(f"{ts.professor.name}", styles_map['prof']))
                 if sec_lbl:
                     content.append(Paragraph(sec_lbl, styles_map['prof']))
                 if ts.room:
-                    content.append(Paragraph(f"🚪 {ts.room.name}", styles_map['prof']))
+                    content.append(Paragraph(_room_label(ts.room.name), styles_map['prof']))
                 content.append(Paragraph(TYPE_LABEL.get(st, st), styles_map['type_tag']))
                 row.append(content)
                 bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),_bg(st)))
                 if is_lab_span:
-                    span_cmds.append(('SPAN',(ci,ri),(_pdf_slot_to_col(next_slot),ri)))
+                    span_cmds.append(('SPAN',(ci,ri),(slot+1,ri)))
                     skip_next = True
             else:
                 row.append(Paragraph("—", styles_map['prof']))
                 bg_cmds.append(('BACKGROUND',(ci,ri),(ci,ri),EMPTY_COL))
         rows.append(row)
 
-    col_widths  = [1.7*cm] + [2.6*cm]*5 + [1.8*cm] + [2.6*cm]*4
+    col_widths  = [1.7*cm] + [2.4*cm]*9
     row_heights = [1.0*cm] + [2.2*cm]*len(DAYS)
     t = Table(rows, colWidths=col_widths, rowHeights=row_heights)
+    _lunch_lines = []
+    for lc in lunch_cols:
+        _lunch_lines += [('LINEBEFORE',(lc,0),(lc,-1),1.0,colors.HexColor('#fed7aa')),
+                         ('LINEAFTER', (lc,0),(lc,-1),1.0,colors.HexColor('#fed7aa'))]
     t.setStyle(TableStyle([
         ('GRID',          (0,0),(-1,-1), 0.5, GRID_COL),
         ('BOX',           (0,0),(-1,-1), 1.2, HDR),
-        ('LINEBEFORE',    (6,0),(6,-1),  1.0, colors.HexColor('#fed7aa')),
-        ('LINEAFTER',     (6,0),(6,-1),  1.0, colors.HexColor('#fed7aa')),
         ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
         ('ALIGN',         (0,0),(-1,-1), 'CENTER'),
         ('TOPPADDING',    (0,0),(-1,-1), 4),
@@ -1899,7 +2036,7 @@ def _build_prof_room_pdf_table(raw, styles_map, hdr_color_hex='#1565c0', is_list
         ('FONTNAME',      (0,0),(-1,0),  'Helvetica-Bold'),
         ('FONTSIZE',      (0,0),(-1,0),  7),
         ('TEXTCOLOR',     (0,0),(-1,0),  colors.white),
-    ] + bg_cmds + span_cmds))
+    ] + _lunch_lines + bg_cmds + span_cmds))
     return t
     """A coloured banner used as a section divider in the department PDF."""
     from reportlab.platypus import Table, TableStyle
@@ -1934,6 +2071,14 @@ def export_department_pdf(request, dept_id):
     dept = get_object_or_404(Department, id=dept_id)
     guard = _dept_guard(request, dept)
     if guard: return guard
+    # ── Validation guard: never export a timetable with hard conflicts ─────────
+    from .validation import find_conflicts
+    vres = find_conflicts(dept_id=dept.id)
+    if vres['has_hard']:
+        messages.error(request,
+            f"❌ Cannot export {dept.name}: {vres['total_hard']} unresolved conflict(s). "
+            "Open Validate Timetable and regenerate before exporting.")
+        return redirect('validate_timetable')
     styles_map = _get_pdf_styles()
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
@@ -2058,7 +2203,7 @@ def export_department_pdf(request, dept_id):
             data = _build_tt_data(section)
             elements.append(Paragraph(label, styles_map['section_title']))
             elements.append(Paragraph("Weekly Class Timetable  (Code · Subject · Professor · Room)", styles_map['sub']))
-            elements.append(_build_pdf_table(data, label, styles_map))
+            elements.append(_build_pdf_table(data, label, styles_map, _get_lunch_slots(section.course.department_id)))
 
     # ── PART 2: COMBINED (G1+G2) TIMETABLES ─────────────────────────────────
     if combined_groups:
@@ -2214,12 +2359,21 @@ def export_professor_pdf(request, professor_id):
         if ts.day in raw and ts.slot in raw[ts.day]:
             raw[ts.day][ts.slot].append(ts)
 
-    # SLOTS = [1..9], slot 6+ are afternoon (slot 5 = last before lunch)
-    # Table columns: Day | s1 | s2 | s3 | s4 | s5 | Lunch | s6 | s7 | s8 | s9
-    # col indices:    0     1    2    3    4    5     6       7    8    9    10
+    # The lunch break is whatever slot(s) the professor's department(s) configured —
+    # NOT a hardcoded position. Columns map 1:1 to slots (Day | s1 | … | s9); the
+    # lunch slot's own column is shown as "Lunch" so 1:10–2:00 never appears twice
+    # and afternoon classes/labs stay in their correct slots.
+    _dept_ids = {ts.section.course.department_id
+                 for ts in TimeSlot.objects.filter(professor=professor).select_related('section__course')
+                 if ts.section}
+    lunch_slots = set()
+    for _did in _dept_ids:
+        lunch_slots |= set(_get_lunch_slots(_did))
+    if not lunch_slots:
+        lunch_slots = {6}   # sensible default: 1:10–2:00
 
     def slot_to_col(slot):
-        return slot if slot <= 5 else slot + 1  # +1 for lunch column
+        return slot   # Day is col 0, slot N is col N
 
     def cell_content(entries, slot):
         """Return (paragraphs_list, bg_color, border_color, type_str)"""
@@ -2229,18 +2383,33 @@ def export_professor_pdf(request, professor_id):
         st = ts.subject.subject_type
         bg = LAB_BG if st == 'LAB' else (TUT_BG if st == 'TUTORIAL' else THEORY_BG)
         bd = LAB_BD if st == 'LAB' else (TUT_BD if st == 'TUTORIAL' else THEORY_BD)
-        type_label = '🔬 LAB' if st == 'LAB' else ('📘 TUT' if st == 'TUTORIAL' else ('📡 NPTEL' if st == 'NPTEL' else '📖 THEORY'))
+        type_label = 'LAB' if st == 'LAB' else ('TUTORIAL' if st == 'TUTORIAL' else ('NPTEL' if st == 'NPTEL' else 'THEORY'))
 
-        sec_parts = []
-        seen = set()
+        # Compact, de-duplicated class label. Co-taught groups of the same
+        # semester+section collapse to one line, e.g. "Semester 4 · CS-1 (G1, G2)".
+        # The (long) department name is only shown when the professor teaches
+        # across more than one department, to avoid repetitive clutter.
+        groups_by_key = {}
         for t in entries:
-            if t.section:
-                lbl = f"{t.section.course.department.name} · {t.section.get_year_display_label()} · {t.section.group}"
-                if lbl not in seen:
-                    seen.add(lbl)
-                    sec_parts.append(lbl)
-        sec_text = ", ".join(sec_parts)
-        room_text = f"🚪 {ts.room.name}" if ts.room else ""
+            if not t.section:
+                continue
+            key = (t.section.course.department.name,
+                   t.section.get_year_display_label(),
+                   t.section.get_effective_section_name())
+            groups_by_key.setdefault(key, [])
+            if t.section.group and t.section.group not in groups_by_key[key]:
+                groups_by_key[key].append(t.section.group)
+        multi_dept = len({k[0] for k in groups_by_key}) > 1
+        sec_parts = []
+        for (dept, yr, sec), grps in groups_by_key.items():
+            lbl = f"{yr} · {sec}"
+            if grps:
+                lbl += f" ({', '.join(sorted(grps))})"
+            if multi_dept:
+                lbl = f"{dept} · {lbl}"
+            sec_parts.append(lbl)
+        sec_text = "<br/>".join(sec_parts)
+        room_text = _room_label(ts.room.name) if ts.room else ""
 
         content = [Paragraph(f"<b>{ts.subject.name}</b>", S['subj'])]
         if sec_text: content.append(Paragraph(sec_text, S['meta']))
@@ -2249,41 +2418,35 @@ def export_professor_pdf(request, professor_id):
         return content, bg, bd, st
 
     # ── Build rows with lab colspan ──────────────────────────────────────────
-    slot_labels = (
-        ["Day"] +
-        [SLOT_TIMES[s] for s in SLOTS[:5]] +
-        ["Lunch\n1:10–2:00"] +
-        [SLOT_TIMES[s] for s in SLOTS[5:]]
-    )
+    # One column per slot. The lunch slot's column header shows "Lunch <time>".
+    slot_labels = ["Day"] + [
+        (f"Lunch\n{SLOT_TIMES[s]}" if s in lunch_slots else SLOT_TIMES[s]) for s in SLOTS]
     header_row = [Paragraph(s.replace('\n', '<br/>'), S['head']) for s in slot_labels]
     rows = [header_row]
     span_cmds = []   # SPAN commands for lab 2-col merge
     bg_cmds   = []
-    bd_cmds   = []
+    lunch_cols = [slot_to_col(s) for s in SLOTS if s in lunch_slots]
 
     for ri, day in enumerate(DAYS, start=1):
         row = [Paragraph(f"<b>{day[:3]}</b>", S['day'])]
         skip_next = False
-        col_idx = 1  # start after Day col
 
-        for si, slot in enumerate(SLOTS):
-            if slot == 6:
-                row.append(Paragraph("🍽<br/><b>Lunch</b>", S['lunch']))
-                bg_cmds.append(('BACKGROUND', (6, ri), (6, ri), LUNCH_BG))
-                col_idx += 1  # skip lunch col count
-
+        for slot in SLOTS:
+            ci = slot_to_col(slot)
             if skip_next:
                 skip_next = False
-                col_idx += 1
+                row.append('')   # placeholder for the spanned (merged) cell
+                continue
+            if slot in lunch_slots:
+                row.append(Paragraph("<b>Lunch</b>", S['lunch']))
+                bg_cmds.append(('BACKGROUND', (ci, ri), (ci, ri), LUNCH_BG))
                 continue
 
             entries = raw[day][slot]
-            ci = slot_to_col(slot)
-
-            # Check if lab spans this + next slot
+            # Check if lab spans this + next slot (next slot must not be lunch)
             is_lab = entries and entries[0].subject.subject_type == 'LAB'
             next_slot = slot + 1 if slot < 9 else None
-            next_entries = raw[day][next_slot] if next_slot and next_slot != 6 else []
+            next_entries = raw[day][next_slot] if (next_slot and next_slot not in lunch_slots) else []
             next_is_same_lab = (
                 is_lab and next_entries and
                 next_entries[0].subject.subject_type == 'LAB' and
@@ -2295,47 +2458,42 @@ def export_professor_pdf(request, professor_id):
             row.append(content)
             bg_cmds.append(('BACKGROUND', (ci, ri), (ci, ri), bg))
 
-            if next_is_same_lab and slot != 5:
-                # Merge this cell with next column
-                ci_next = slot_to_col(next_slot)
-                span_cmds.append(('SPAN', (ci, ri), (ci_next, ri)))
+            if next_is_same_lab:
+                span_cmds.append(('SPAN', (ci, ri), (slot_to_col(next_slot), ri)))
                 skip_next = True
-
-            col_idx += 1
 
         rows.append(row)
 
-    # ── Column widths ────────────────────────────────────────────────────────
-    # Day | 5 morning slots | Lunch | 4 afternoon slots
-    col_widths = [1.7*cm] + [2.6*cm]*5 + [1.8*cm] + [2.6*cm]*4
+    # ── Column widths ── Day + 9 equal slot columns ──────────────────────────
+    col_widths = [1.7*cm] + [2.4*cm]*9
     row_heights = [1.0*cm] + [2.2*cm]*len(DAYS)
 
     t = Table(rows, colWidths=col_widths, rowHeights=row_heights)
 
     base_style = [
-        # Header
         ('BACKGROUND',   (0, 0),  (-1, 0),  BLUE),
         ('TEXTCOLOR',    (0, 0),  (-1, 0),  WHITE),
         ('FONTNAME',     (0, 0),  (-1, 0),  'Helvetica-Bold'),
         ('FONTSIZE',     (0, 0),  (-1, 0),  7),
-        # Day column
         ('BACKGROUND',   (0, 1),  (0, -1),  DAY_BG),
         ('FONTNAME',     (0, 1),  (0, -1),  'Helvetica-Bold'),
-        # Lunch column
-        ('BACKGROUND',   (6, 1),  (6, -1),  LUNCH_BG),
-        # Grid
         ('GRID',         (0, 0),  (-1, -1), 0.5, GRID_COL),
         ('BOX',          (0, 0),  (-1, -1), 1.0, BLUE),
-        ('LINEBEFORE',   (6, 0),  (6, -1),  1.0, colors.HexColor('#fed7aa')),
-        ('LINEAFTER',    (6, 0),  (6, -1),  1.0, colors.HexColor('#fed7aa')),
-        # Alignment & padding
         ('VALIGN',       (0, 0),  (-1, -1), 'MIDDLE'),
         ('ALIGN',        (0, 0),  (-1, -1), 'CENTER'),
         ('TOPPADDING',   (0, 0),  (-1, -1), 4),
         ('BOTTOMPADDING',(0, 0),  (-1, -1), 4),
         ('LEFTPADDING',  (0, 0),  (-1, -1), 3),
         ('RIGHTPADDING', (0, 0),  (-1, -1), 3),
-    ] + bg_cmds + span_cmds
+    ]
+    # Shade + bracket each lunch column at its real slot position.
+    for lc in lunch_cols:
+        base_style += [
+            ('BACKGROUND', (lc, 1), (lc, -1), LUNCH_BG),
+            ('LINEBEFORE', (lc, 0), (lc, -1), 1.0, colors.HexColor('#fed7aa')),
+            ('LINEAFTER',  (lc, 0), (lc, -1), 1.0, colors.HexColor('#fed7aa')),
+        ]
+    base_style += bg_cmds + span_cmds
 
     t.setStyle(TableStyle(base_style))
 
@@ -2385,52 +2543,66 @@ def csv_upload(request):
     if request.method == 'POST' and form.is_valid():
         cd = form.cleaned_data
         clear = cd.get('clear_existing', False)
+        dept_id = acc.current_department_id(request)   # None for a full Admin
+        is_full_admin = acc.is_admin(request)
 
         files_dict = {}
-        if cd.get('subjects_csv'):    files_dict['subjects']      = cd['subjects_csv']
-        if cd.get('professors_csv'):  files_dict['professors']    = cd['professors_csv']
-        if cd.get('rooms_csv'):       files_dict['rooms']         = cd['rooms_csv']
-        if cd.get('sections_csv'):    files_dict['sections']      = cd['sections_csv']
-        if cd.get('dept_settings_csv'): files_dict['dept_settings'] = cd['dept_settings_csv']
+        if cd.get('subjects_csv'):    files_dict['subjects']   = cd['subjects_csv']
+        if cd.get('professors_csv'):  files_dict['professors'] = cd['professors_csv']
+        if cd.get('rooms_csv'):       files_dict['rooms']      = cd['rooms_csv']
+        if cd.get('sections_csv'):    files_dict['sections']   = cd['sections_csv']
+        # ── Req 1: ONLY the Super Admin may upload Department Settings ──────────
+        # Backend enforcement (the UI also hides this field from Department Admins).
+        if cd.get('dept_settings_csv'):
+            if is_full_admin:
+                files_dict['dept_settings'] = cd['dept_settings_csv']
+            else:
+                messages.error(request,
+                    '⛔ Only the Super Admin can upload Department Settings — that file '
+                    'was ignored. Your other files were still processed.')
 
-        # A timetable already on record means this upload is a re-import that
-        # must OVERRIDE the previous result — not merge on top of it.
-        timetable_exists = TimeSlot.objects.exists()
-        re_import = timetable_exists and not clear
-
-        # Department Admins are scoped to their own department: a re-import must
-        # NOT wipe other departments' sections/subjects/timetables (so a shared
-        # professor's timetable is preserved and only updated on regeneration).
-        dept_id = acc.current_department_id(request)
         default_department = Department.objects.filter(id=dept_id).first() if dept_id else None
 
+        # ── Department-scoped querysets ────────────────────────────────────────
+        # A Department Admin's upload must never touch another department's data.
         if dept_id:
             sec_scope  = Section.objects.filter(course__department_id=dept_id)
             subj_scope = Subject.objects.filter(section__course__department_id=dept_id)
+            room_scope = Room.objects.filter(department_id=dept_id)
             ts_scope   = TimeSlot.objects.filter(section__course__department_id=dept_id)
         else:
-            sec_scope, subj_scope, ts_scope = (Section.objects.all(),
-                                               Subject.objects.all(), TimeSlot.objects.all())
+            sec_scope, subj_scope = Section.objects.all(), Subject.objects.all()
+            room_scope, ts_scope  = Room.objects.all(), TimeSlot.objects.all()
 
-        # Optional data clear (scoped to the uploader's department for Dept Admins)
+        had_timetable = ts_scope.exists()   # measured BEFORE we clear it
+
+        # ── Req 2: each uploaded CSV OVERRIDES the existing data for that scope ──
+        # The newly-uploaded file is authoritative: previous records for the data
+        # type(s) being uploaded are removed so the result reflects EXACTLY the new
+        # file (no duplicates, no stale rows). The timetable is always rebuilt after.
+        # Professors are removed shared-aware (a professor still mapped to another
+        # department survives; only this department's mapping is dropped). Req 4's
+        # workload values come back fresh because professors are re-imported.
         if clear:
-            ts_scope.delete()
-            subj_scope.delete()
-            sec_scope.delete()
+            ts_scope.delete(); subj_scope.delete(); sec_scope.delete()
+            room_scope.delete()
+            _purge_professors_for_scope(dept_id)
             scope_label = 'your department' if dept_id else 'all departments'
-            messages.warning(request, f'🗑️ Existing timetable, subjects and sections for {scope_label} cleared.')
-        elif re_import:
-            # Re-upload after a timetable was generated: drop the stale timetable and
-            # the structural data being replaced so the new one reflects THIS file,
-            # instead of a merge of the old and new data. Scoped per department.
-            # (Deleting a Section cascades to its Subjects and TimeSlots; deleting a
-            #  Subject cascades to its TimeSlots.)
-            ts_scope.delete()
+            messages.warning(request, f'🗑️ Existing data for {scope_label} cleared before import.')
+        else:
+            ts_scope.delete()                       # stale timetable — always rebuilt
             if 'sections' in files_dict:
-                sec_scope.delete()
-            if 'subjects' in files_dict:
-                subj_scope.delete()
-            messages.info(request, '♻️ Re-import detected — the previous timetable was cleared and will be rebuilt from this file.')
+                sec_scope.delete()                  # cascades this dept's subjects + slots
+            elif 'subjects' in files_dict:
+                subj_scope.delete()                 # replace subjects only
+            if 'rooms' in files_dict:
+                room_scope.delete()                 # SET_NULL on fixed_room / lab_room
+            if 'professors' in files_dict:
+                _purge_professors_for_scope(dept_id)
+            if files_dict:
+                messages.info(request,
+                    '♻️ Override import — the uploaded file(s) replaced the previous '
+                    'records for ' + ('your department.' if dept_id else 'all departments.'))
 
         # Department Admins: professors/rooms without a department in the CSV are
         # assigned to their department, so the login names/IDs and records stay
@@ -2464,9 +2636,10 @@ def csv_upload(request):
             messages.error(request, f"❌ {e}")
 
         # Auto-generate timetable.
-        # Always regenerate on a re-import so the overridden timetable is rebuilt
-        # from the current file; otherwise honour the user's checkbox.
-        if (cd.get('auto_generate') or re_import) and not errors:
+        # Always regenerate when a timetable already existed (its scope was just
+        # cleared by the override) so it is rebuilt from the current file;
+        # otherwise honour the user's checkbox.
+        if (cd.get('auto_generate') or had_timetable) and not errors:
             return redirect('generate_smart')
 
         return redirect('csv_upload')
@@ -2474,29 +2647,30 @@ def csv_upload(request):
     return render(request, 'csv_upload.html', {'form': form, 'recent_logs': recent_logs})
 
 
-def csv_download_template(request, template_name):
-    """Download a sample CSV template."""
+def csv_download_template(request, template_name, fmt=None):
+    """Download a sample CSV or Excel template. `fmt` comes from either the URL
+    (/csv-template/subjects/excel/) or the ?format= query string."""
     templates = {
         'subjects': {
             'filename': 'subjects_template.csv',
             'rows': [
-                'Department_name,Subject_id,Subject_Name,Sub_type,Theory_per_week,Tutorial_per_week,Lab_per_week,Allowed_groups,Course,Program Name,Semester',
-                'Computer Science & Engineering,AGCS-21301,DBMS,REGULAR,3,1,1,G1,B.TECH,Computer Science &Engineering,3rd',
-                'Computer Science & Engineering,AGCS-21302,Machine Learning,REGULAR,3,0,0,G1 G2,B.TECH,Computer Science &Engineering,3rd',
-                'Computer Science & Engineering,AGCS-21303,PYTHON,NPTEL,0,1,0,G1 G2 G3,B.TECH,Computer Science &Engineering,3rd',
-                'Computer Science & Engineering,AGCS-21304,OS,ELECTIVE,3,1,1,G1 G2 G3,B.TECH,ComputerEngineering,3rd',
+                'Department_name,Subject_id,Subject_name,Sub_type,Theory_per_week_per_section,Tutorial_per_week_per_group,Lab_per_week_per_group,Allowed_groups,Course_name,Program_name,Semester',
+                'Applied Science,AGCS-21401,Discrete Structures,REGULAR,3,1,0,G1 G2,B.TECH,"CSE,COE",4th',
+                'Computer Science & Engineering,AGCS-21402,Relational Database Management Systems,REGULAR,3,1,1,G1 G2,B.TECH,"CSE,COE",4th',
+                'Computer Science & Engineering,AGCS-21403,Programming in Python,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",4th',
+                'Computer Science & Engineering,AGCS-21405,Web Development,ELECTIVE,3,0,1,G1 G2,B.TECH,CSE,4th',
             ]
         },
         'professors': {
             'filename': 'professors_template.csv',
             'rows': [
-                'Department Name,Teacher_id,Teacher_name,Max_Workload_Hours_per_week,Subject Name,"Dept Name,Prog Name,Sem,Sec",Block_time_slot(day/time),Fixed_time_slot(day/time)',
-                'Computer Science & Engineering,CS001,Dr.Sandeep Kad,6,Machine Learning,"CSE,BTECH CSE,3rd,I","Tuesday,9:50 to 11:30","Wednesday,9:50 to 11:30"',
-                'Computer Science & Engineering,CS002,Er.Ajay Sharma,13,RDBMS,"CSE,BTECH CoE,2nd,II","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Tuesday,9:00 to 9:50"',
-                'Computer Science & Engineering,CS002,Er.Ajay Sharma,,Machine Learning,"EE,BTECH EE,3rd,III","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Wednesday,9:00 to 9:50"',
-                'Computer Science & Engineering,CS002,Er.Ajay Sharma,,OS Lab,"EE,BTECH CSE,3rd,I","Monday,9:00 to 9:50|Friday,2:00 to 2:50","Thursday,9:00 to 9:50"',
-                ',,,,,Put the department name for which the teacher is teaching the subject,This block time is for specific teacher not mandatory for all,',
-                ',,,,,//in block time there shouldn\'t be any classes allocated to them | fixed time = the teacher must teach this subject then,,',
+                'Department_name,Teacher_id,Teacher_name,Max_Workload_Hours_per_week,Subject_name,Program_name,Course_name,Semester,Section,Group,Block_time_slot(day/time),Fixed_time_slot(day/time)',
+                'Computer Science & Engineering,CS-AJS,Er. Ajay Sharma,18,Big Data Analytics,"CSE,COE",B.TECH,6th,CS-1,"G1,G2",,',
+                'Applied Science,AS-RS,Ratneer Sharma,,Discrete Structures,CSE,B.TECH,4th,CS-1,"G1,G2",,',
+                'Computer Science & Engineering,CS-SK,Er. Sanjeev Kumar,,Machine Learning Lab,CSE,B.TECH,6th,CS-2,G1,,',
+                'Computer Science & Engineering,CS-BK,Er. Bhuvnesh Kumar,,Machine Learning Lab,CSE,B.TECH,6th,CS-2,G2,"Monday,9:00 to 9:50","Wednesday,9:50 to 11:30"',
+                ',,,,,Department_name = the teacher\'s own faculty (may differ, e.g. Applied Science). Program_name = the students\' branch (CSE / "CSE,COE").,,,,,Block = teacher is NOT free then,Fixed = teacher MUST teach this subject then',
+                ',,,,,Group = G1 / G2 (or "G1,G2" for both). A different teacher can be named per group.,,,,,,',
             ]
         },
         'rooms': {
@@ -2511,19 +2685,19 @@ def csv_download_template(request, template_name):
         'sections': {
             'filename': 'sections_template.csv',
             'rows': [
-                'Department,Semester,section,group,Fixed_room,Course,Program Name,Free_day,Class_Count,Day,Section_Start_time',
-                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Monday,9:00',
-                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Tuesday,9:50',
-                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Thursday,10:40',
-                'Computer Science & Engineering,3rd,I,G1,MB-202,B.TECH,Computer Science &Engineering,Wednesday,25,Friday,9:00',
-                'Computer Science & Engineering,3rd,II,G2,MB-301,B.TECH,ComputerEngineering,Thursday,22,,9:00',
-                'Note: if time is different on all five days then make multiple enteries in Day and Start Section time column else leave Day column empty incase of strt time is same all the five days',
+                'Department_name,Semester,section,group,Fixed_room,Course_name,Program_name,Free_day,Class_Count,Day,Section_Start_time',
+                'Computer Science & Engineering,4th,CS-1,G1,,B.TECH,CSE,,40,,9:00',
+                'Computer Science & Engineering,4th,CS-1,G2,,B.TECH,CSE,,40,,9:00',
+                'Computer Science & Engineering,4th,CS-2,G1,,B.TECH,CSE,,40,,9:00',
+                'Computer Science & Engineering,4th,COE-1,G1,,B.TECH,COE,,40,,9:00',
+                'Computer Science & Engineering,4th,COE-1,G2,,B.TECH,COE,Wednesday,40,,9:00',
+                'Note: Program Name = branch (CSE / COE) — a subject reaches a section when the section\'s branch is one of the subject\'s Program_name branches. Course = degree (B.TECH/M.TECH). Fixed_room optional. Leave Day empty if start time is the same all five days.',
             ]
         },
         'dept_settings': {
             'filename': 'dept_settings_template.csv',
             'rows': [
-                'Department,Lunch_Start_time,Department_Start_time',
+                'Department_name,Lunch_Start_time,Department_Start_time',
                 'Computer Science & Engineering,12:20,9:00',
             ]
         },
@@ -2531,6 +2705,38 @@ def csv_download_template(request, template_name):
     tmpl = templates.get(template_name)
     if not tmpl:
         return HttpResponse('Template not found', status=404)
+
+    fmt = (fmt or request.GET.get('format') or 'csv').lower()
+    if fmt in ('xlsx', 'excel'):
+        import csv as _csv, io as _io
+        try:
+            import openpyxl
+        except ImportError:
+            return HttpResponse(
+                'Excel export needs the openpyxl package (pip install openpyxl). '
+                'Use the CSV template instead.', status=503)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Template'
+        for ri, line in enumerate(tmpl['rows']):
+            cells = next(_csv.reader([line]))
+            # Store pure-integer cells (counts like 0/1/2/3) as real numbers so Excel
+            # doesn't flag "number stored as text"; everything else stays text.
+            vals = [int(c) if (ri > 0 and c.strip().lstrip('-').isdigit()) else c for c in cells]
+            ws.append(vals)
+        ws.freeze_panes = 'A2'   # keep the header row visible while filling
+        for col in ws.columns:
+            width = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 12), 48)
+        buf = _io.BytesIO()
+        wb.save(buf)
+        fname = tmpl['filename'].rsplit('.', 1)[0] + '.xlsx'
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = f'attachment; filename="{fname}"'
+        return resp
+
     content = '\n'.join(tmpl['rows']) + '\n'
     resp = HttpResponse(content, content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="{tmpl["filename"]}"'
@@ -2635,9 +2841,12 @@ def generate_timetable_smart(request):
     def is_prof_free(prof_id, day, slot):
         return (day, slot) not in professor_busy.get(prof_id, set())
 
-    def mark_prof_busy(prof_id, day, slot, slot_mins=50):
+    def mark_prof_busy(prof_id, day, slot, slot_mins=60):
+        # 1 slot = 1 contact hour (60 min). A 2-slot lab = 2 contact hours. The
+        # workload limit (max_workload_hours_per_week) is therefore the maximum
+        # number of slots a professor may teach in a week.
         professor_busy.setdefault(prof_id, set()).add((day, slot))
-        professor_mins[prof_id] += slot_mins  # 50 min per theory/tutorial, 100 per lab slot
+        professor_mins[prof_id] += slot_mins
 
     def prof_within_workload(prof):
         # max_workload_hours_per_week × 60 = total allowed minutes
@@ -2685,18 +2894,18 @@ def generate_timetable_smart(request):
                 eligible = profs  # fallback
         else:
             eligible = profs
-        # Calculate mins this assignment will consume
-        slot_mins = 100 if slot_type == 'lab' else 50
-        needed_mins = slot_mins * len(slots)
-        # Filter by availability AND strict workload limit
+        # Contact hours this one session consumes: a lab spans 2 slots = 2 hours,
+        # theory/tutorial/NPTEL = 1 hour. (1 slot = 1 contact hour = 60 min.)
+        needed_mins = 120 if slot_type == 'lab' else 60
+        # Workload limit. Theory/NPTEL are STRICT (never over max). Labs & tutorials
+        # may push a professor up to 2 HOURS over their max when that is the only way
+        # to seat a CSV-mandated lab/tutorial — never further than max + 120 min.
+        slack = 120 if slot_type in ('lab', 'tutorial') else 0
         free = [
             p for p in eligible
             if all(is_prof_free(p.id, day, s) for s in slots)
-            and prof_remaining_mins(p) >= needed_mins
+            and professor_mins[p.id] + needed_mins <= p.max_workload_hours_per_week * 60 + slack
         ]
-        if not free:
-            # Relax workload limit as last resort (avoid total skip)
-            free = [p for p in eligible if all(is_prof_free(p.id, day, s) for s in slots)]
         if not free:
             return None
         # Pick least-loaded professor for balanced distribution
@@ -2728,10 +2937,115 @@ def generate_timetable_smart(request):
     clash_warnings = []
     no_room_warn = []
 
-    # Group sections into pairs (G1+G2 of same course/year/section)
+    # Group sections into pairs (G1+G2 of same course/year/section). Use the
+    # EFFECTIVE section name so custom-named sections (CS-1, CS-2, COE …) — all
+    # stored as section_name='CUSTOM' — stay separate instead of merging.
     pair_map = defaultdict(list)
     for sec in all_sections:
-        pair_map[(sec.course_id, sec.year, sec.section_name)].append(sec)
+        pair_map[(sec.course_id, sec.year, sec.get_effective_section_name())].append(sec)
+
+    # ── COURSE-WIDE ELECTIVES (pre-pass) ────────────────────────────────────────
+    # Electives run COURSE-WIDE: every section of the same course + semester attends
+    # the elective period at ONE common time, and the distinct elective options run
+    # in parallel in different rooms (a student picks one). Placed before regular
+    # scheduling so theory/labs/tutorials avoid these reserved slots. A timeslot is
+    # created for every relevant group's section; the professor/room count once.
+    elective_groups = defaultdict(lambda: defaultdict(list))  # (course_id, year) → {name: [(sec, subj)]}
+    course_year_sections = defaultdict(list)
+    for sec in all_sections:
+        course_year_sections[(sec.course_id, sec.year)].append(sec)
+        for subj in sec.subjects.all():
+            if subj.subject_type == 'THEORY' and getattr(subj, 'is_elective', False) and subj.professors.exists():
+                ag = subj.allowed_groups
+                if ag == 'G1' and sec.group != 'G1':
+                    continue
+                if ag == 'G2' and sec.group != 'G2':
+                    continue
+                elective_groups[(sec.course_id, sec.year)][subj.name].append((sec, subj))
+
+    for (course_id, year), name_map in elective_groups.items():
+        secs = course_year_sections[(course_id, year)]
+        dept_id = secs[0].course.department_id
+        w_days = get_working_days(dept_id)
+        lunch_slots = get_lunch_slots(dept_id)
+        dept_start = get_dept_start_slot(dept_id)
+        e_classrooms = get_dept_rooms(all_classrooms, dept_id)
+        e_labs = get_dept_rooms(all_labs, dept_id)
+        free_days = set(s.free_day for s in secs if s.free_day)
+        e_days = [d for d in w_days if d not in free_days] or w_days[:]
+        sec_starts = [s.section_start_slot for s in secs if s.section_start_slot]
+        e_start = min(sec_starts) if sec_starts else dept_start
+        e_slots = [s for s in SLOTS if s not in lunch_slots and s >= e_start]
+
+        # Sections that actually have an elective — the common slot must be free for all.
+        elective_secs = {sec for n in name_map for (sec, _) in name_map[n]}
+        max_cap = max((s.class_count or 0) for s in elective_secs)
+        names = list(name_map.keys())
+        remaining = {n: max(sj.lectures_per_week for (_, sj) in name_map[n]) for n in names}
+        days_used = set()
+
+        def _e_all_free(day, slot, esecs=elective_secs):
+            return not any(TimeSlot.objects.filter(section=s, day=day, slot=slot).exists() for s in esecs)
+
+        def _e_pick_prof(subjs, day, slot, used_profs):
+            cands, seen = [], set()
+            for (_, sj) in subjs:
+                for p in sj.professors.all():
+                    if p.id in seen or p.id in used_profs:
+                        continue
+                    seen.add(p.id)
+                    if (is_prof_free(p.id, day, slot) and prof_chain_ok(p.id, day, slot, slot)
+                            and prof_remaining_mins(p) >= 60):
+                        cands.append(p)
+            return min(cands, key=lambda p: professor_mins[p.id]) if cands else None
+
+        for _ in range(max(remaining.values(), default=0) * len(names) + len(names)):
+            todo = [n for n in names if remaining[n] > 0]
+            if not todo:
+                break
+            placed = None
+            day_order = [d for d in e_days if d not in days_used] or e_days[:]
+            for day in day_order:
+                for slot in e_slots:
+                    if not _e_all_free(day, slot):
+                        continue
+                    used_rooms, used_profs, here = set(), set(), []
+                    for n in todo:
+                        subjs = name_map[n]
+                        prof = _e_pick_prof(subjs, day, slot, used_profs)
+                        if not prof:
+                            continue
+                        room = (get_free_room([r for r in e_classrooms if r.id not in used_rooms], day, slot, min_capacity=max_cap)
+                                or get_free_room([r for r in (e_classrooms + e_labs) if r.id not in used_rooms], day, slot))
+                        if not room:
+                            continue
+                        here.append((n, subjs, prof, room)); used_rooms.add(room.id); used_profs.add(prof.id)
+                    if here:
+                        placed = (day, slot, here)
+                        break
+                if placed:
+                    break
+            if not placed:
+                break
+            day, slot, here = placed
+            for (n, subjs, prof, room) in here:
+                for (g_sec, g_subj) in subjs:
+                    TimeSlot.objects.create(day=day, slot=slot, subject=g_subj,
+                                            professor=prof, section=g_sec, room=room)
+                    total_created += 1
+                mark_prof_busy(prof.id, day, slot)       # one physical class — counted once
+                add_prof_session(prof.id, day, slot, slot)
+                mark_room_busy(room, day, slot)
+                remaining[n] -= 1
+            days_used.add(day)
+        for n in names:
+            if remaining[n] > 0:
+                clash_warnings.append(f"Elective {n} — {remaining[n]} course-wide session(s) could not be placed")
+
+    # Labs that the greedy first pass could not seat (often because a slot/room only
+    # freed up *after* that lab was tried). Retried once at the end, when the full
+    # schedule is known, so a placeable lab is never dropped on ordering alone.
+    unplaced_labs = []
 
     for pair_key, sections_in_pair in pair_map.items():
         dept_id = sections_in_pair[0].course.department_id
@@ -2763,8 +3077,12 @@ def generate_timetable_smart(request):
         # lunch slot. Order by NPTEL_SLOTS preference, then fill remaining post-lunch.
         lunch_end_slot = max(lunch_slots) if lunch_slots else (dept_start + 3)
         post_lunch = [s for s in avail_slots if s > lunch_end_slot]
-        nptel_slots = [s for s in NPTEL_SLOTS if s in post_lunch] + \
-                      [s for s in post_lunch if s not in NPTEL_SLOTS]
+        pre_lunch  = [s for s in avail_slots if s < lunch_start_slot]
+        # NPTEL prefers after-lunch slots; if a section has none free there, it may
+        # fall back to a before-lunch slot (appended last so it's a last resort).
+        nptel_slots = ([s for s in NPTEL_SLOTS if s in post_lunch]
+                       + [s for s in post_lunch if s not in NPTEL_SLOTS]
+                       + pre_lunch)
 
         theory_subjects = {}
         nptel_subjects = {}           # grouped by subject name — same logic as THEORY
@@ -2816,82 +3134,12 @@ def generate_timetable_smart(request):
                         nptel_subjects[key]['subj_per_sec'][sec.id] = subj
 
         pair_used_slots = {day: set() for day in w_days}
-
-        # ── ELECTIVE PARALLEL PRE-PASS ─────────────────────────────────────────
-        # A semester's electives are alternatives — a student takes ONE. So all of a
-        # section's electives run in the SAME time slot, each in a different room
-        # (or lab). We place them before regular theory so they get a clean slot.
-        # Whatever can't fit in parallel falls back to any free slot/room.
-        for sec in sections_in_pair:
-            electives = elective_by_section.get(sec.id, [])
-            if not electives:
-                continue
-            remaining = {e.id: e.lectures_per_week for e in electives}
-            esubj = {e.id: e for e in electives}
-            sec_days_used = set()
-
-            def _sec_busy(day, slot):
-                return (slot in pair_used_slots[day]
-                        or TimeSlot.objects.filter(section=sec, day=day, slot=slot).exists())
-
-            def _pick_elective_prof(e, day, slot, used_profs):
-                cands = [p for p in e.professors.all()
-                         if p.id not in used_profs and is_prof_free(p.id, day, slot)
-                         and prof_chain_ok(p.id, day, slot, slot)]
-                return min(cands, key=lambda p: professor_mins[p.id]) if cands else None
-
-            # Try to schedule one parallel elective period per day until all are placed.
-            max_periods = max(remaining.values()) if remaining else 0
-            for _ in range(max_periods * len(electives) + len(electives)):
-                todo = [esubj[i] for i, n in remaining.items() if n > 0]
-                if not todo:
-                    break
-                placed_here = []
-                # Pick the least-loaded day not yet used for an elective period.
-                day_order = sorted(
-                    [d for d in effective_w_days if d not in sec_days_used and not (sec.free_day and d == sec.free_day)],
-                    key=lambda d: len(pair_used_slots[d]))
-                if not day_order:
-                    day_order = [d for d in effective_w_days if not (sec.free_day and d == sec.free_day)]
-                for day in day_order:
-                    for slot in avail_slots:
-                        if _sec_busy(day, slot):
-                            continue
-                        used_rooms, used_profs, here = set(), set(), []
-                        for e in todo:
-                            prof = _pick_elective_prof(e, day, slot, used_profs)
-                            if not prof:
-                                continue
-                            room = (get_free_room([r for r in dept_classrooms if r.id not in used_rooms],
-                                                  day, slot, min_capacity=sec.class_count or 0)
-                                    or get_free_room([r for r in (dept_classrooms + dept_labs) if r.id not in used_rooms],
-                                                     day, slot))
-                            if not room:
-                                continue
-                            here.append((e, prof, room)); used_rooms.add(room.id); used_profs.add(prof.id)
-                        if here:
-                            placed_here = (day, slot, here)
-                            break
-                    if placed_here:
-                        break
-                if not placed_here:
-                    break
-                day, slot, here = placed_here
-                for (e, prof, room) in here:
-                    TimeSlot.objects.create(day=day, slot=slot, subject=e,
-                                            professor=prof, section=sec, room=room)
-                    mark_prof_busy(prof.id, day, slot)
-                    add_prof_session(prof.id, day, slot, slot)
-                    mark_room_busy(room, day, slot)
-                    remaining[e.id] -= 1
-                    total_created += 1
-                pair_used_slots[day].add(slot)
-                sec_days_used.add(day)
-            # Anything still unplaced (e.g. ran out of parallel-capable slots).
-            for i, n in remaining.items():
-                if n > 0:
-                    clash_warnings.append(
-                        f"Elective {esubj[i].name} ({sec}) — {n} session(s) could not be placed")
+        # Course-wide electives are placed before this loop. Reserve those slots for
+        # this pair's sections so theory/labs/tutorials don't collide with them.
+        for s in sections_in_pair:
+            for (ts_day, ts_slot) in TimeSlot.objects.filter(section=s).values_list('day', 'slot'):
+                if ts_day in pair_used_slots:
+                    pair_used_slots[ts_day].add(ts_slot)
 
 
         # ── THEORY SCHEDULING — runs FIRST so G1+G2 get same slot/prof/room ──
@@ -2991,6 +3239,10 @@ def generate_timetable_smart(request):
                 nptel_pool.append(n)
         random.shuffle(nptel_pool)
 
+        # `nptel_slots` is already in PREFERENCE order: after-lunch slots first
+        # (Req 6), pre-lunch fallback last. Rank by that order — sorting by the raw
+        # slot number would wrongly try low-numbered pre-lunch slots before lunch.
+        nptel_rank = {s: i for i, s in enumerate(nptel_slots)}
         for n in nptel_pool:
             nsubj = n['subj']
             placed = False
@@ -2999,7 +3251,9 @@ def generate_timetable_smart(request):
                 for s in nptel_slots:
                     if s not in pair_used_slots[day]:
                         candidates.append((day, s))
-            candidates.sort(key=lambda x: x[1])  # lowest slot first
+            # After-lunch first; a pre-lunch slot is used only when no after-lunch
+            # slot is free for this section.
+            candidates.sort(key=lambda x: nptel_rank.get(x[1], 99))
             for day, s in candidates:
                 if s in pair_used_slots[day]:
                     continue
@@ -3023,7 +3277,8 @@ def generate_timetable_smart(request):
                 placed = True
                 break
             if not placed:
-                clash_warnings.append(f"NPTEL {nsubj.name} — no after-2PM slot")        # ── LAB SCHEDULING ─────────────────────────────────────────────────────
+                clash_warnings.append(f"NPTEL {nsubj.name} — no free slot (after- or before-lunch)")
+        # ── LAB SCHEDULING ─────────────────────────────────────────────────────
         # RULE: When G1 has a 2-slot lab, G2 must get 2 tutorial slots in the
         # SAME time block (s1, s2) — and vice versa for G2 lab → G1 tutorials.
         # This ensures both groups are always occupied simultaneously.
@@ -3067,14 +3322,14 @@ def generate_timetable_smart(request):
                 if slot in used or slot in pair_used_slots[day]:
                     continue
                 for tsub in _pending_tutorials(osec):
-                    tprof = pick_professor(tsub, day, slot)
+                    tprof = pick_professor(tsub, day, slot, slot_type='tutorial')
                     if not tprof or not prof_chain_ok(tprof.id, day, slot, slot):
                         continue
                     troom = get_free_room(dept_classrooms, day, slot,
                                           min_capacity=osec.class_count or 0)
                     TimeSlot.objects.create(day=day, slot=slot, subject=tsub,
                                             professor=tprof, section=osec, room=troom)
-                    mark_prof_busy(tprof.id, day, slot, slot_mins=50)
+                    mark_prof_busy(tprof.id, day, slot, slot_mins=60)
                     add_prof_session(tprof.id, day, slot, slot)
                     if troom:
                         mark_room_busy(troom, day, slot)
@@ -3094,10 +3349,15 @@ def generate_timetable_smart(request):
             for ls in lab_pool:
                 candidates = []
                 for day in w_days:
-                    if day in sec_lab_days_used:
-                        continue
                     if sec.free_day and day == sec.free_day:
                         continue
+                    # Spreading labs across days is preferred, not mandatory: a day
+                    # that already holds one of this section's labs is allowed as a
+                    # FALLBACK (higher priority number) so a lab is never dropped just
+                    # because every free day already has one lab. Without this, the
+                    # last sections/groups processed (e.g. COE, G2) could not place
+                    # their labs even when the professor and a lab room were free.
+                    day_used = day in sec_lab_days_used
                     sec_used = set(pair_used_slots[day])
                     for ts_obj in TimeSlot.objects.filter(section=sec, day=day):
                         sec_used.add(ts_obj.slot)
@@ -3110,52 +3370,37 @@ def generate_timetable_smart(request):
                         and s not in lunch_slots and s + 1 not in lunch_slots
                     ]
                     for s1, s2 in valid_pairs:
-                        priority = 0 if s1 in preferred_starts else 1
-                        candidates.append((priority, day, s1, s2))
+                        priority = (0 if s1 in preferred_starts else 1) + (10 if day_used else 0)
+                        # How many lab rooms are free for a 2-slot block starting here.
+                        free_rooms = sum(1 for r in dept_labs if is_room_free(r.id, day, s1, 2))
+                        candidates.append((priority, free_rooms, day, s1, s2))
 
-                # Sort: priority first (preferred starts), then slot asc across full day
-                candidates.sort(key=lambda x: (x[0], x[2]))
+                # Spread labs to where rooms are actually available: preferred/spread
+                # slots first, then the slot with the MOST free lab rooms, then earliest.
+                # This load-balancing stops every lab piling into slots 3–4 (which
+                # saturated all rooms and left labs roomless or unplaced) and instead
+                # uses under-used time blocks so every lab gets a real room.
+                candidates.sort(key=lambda x: (x[0], -x[1], x[3]))
                 placed = False
+                roomless_fallback = None   # first usable (prof-free) slot, if no room is ever free
 
-                for priority, day, s1, s2 in candidates:
-                    sec_used = set(pair_used_slots[day])
-                    for ts_obj in TimeSlot.objects.filter(section=sec, day=day):
-                        sec_used.add(ts_obj.slot)
-                    if s1 in sec_used or s2 in sec_used:
-                        continue
-
-                    prof = pick_professor(ls, day, s1, s2, slot_type='lab')
-                    if not prof:
-                        continue
-                    # No 3 labs/classes in a row: a lab is one 2-slot session.
-                    if not prof_chain_ok(prof.id, day, s1, s2):
-                        continue
-
-                    # Pinned lab room
-                    if ls.lab_room:
-                        if is_room_free(ls.lab_room.id, day, s1, 2):
-                            lab_room = ls.lab_room
-                        else:
-                            continue
-                    else:
-                        lab_room = get_free_room(dept_labs, day, s1, slots_needed=2,
-                                                  subject_name=ls.name, subject_code=ls.code)
-
-                    # Place lab slots
+                def _place_lab_block(day, s1, s2, prof, lab_room):
+                    """Create the 2-slot lab, mark professor/room busy, and fill the
+                    block with parallel tutorials for other groups."""
+                    nonlocal total_created
                     TimeSlot.objects.create(day=day, slot=s1, subject=ls,
                                             professor=prof, section=sec, room=lab_room)
                     TimeSlot.objects.create(day=day, slot=s2, subject=ls,
                                             professor=prof, section=sec, room=lab_room)
-                    mark_prof_busy(prof.id, day, s1, slot_mins=100)
-                    mark_prof_busy(prof.id, day, s2, slot_mins=0)
-                    add_prof_session(prof.id, day, s1, s2)   # one 2-slot lab session
+                    mark_prof_busy(prof.id, day, s1, slot_mins=60)   # lab = 2 contact hrs
+                    mark_prof_busy(prof.id, day, s2, slot_mins=60)
+                    add_prof_session(prof.id, day, s1, s2)           # one 2-slot lab session
                     sec_lab_days_used.add(day)
                     if lab_room:
                         mark_room_busy(lab_room, day, s1, 2)
                     else:
                         no_room_warn.append(f"No lab room for {ls.name} ({sec})")
                     total_created += 2
-
                     # ── Parallel tutorials: a DIFFERENT non-lab group per hour ────
                     # Placed one at a time so the 2nd sees the 1st (consecutive-safe).
                     used_secs = set()
@@ -3163,21 +3408,61 @@ def generate_timetable_smart(request):
                     if a_id is not None:
                         used_secs.add(a_id)
                         total_created += 1
-                    # s2 → prefer a different group; fall back to the same group.
                     b_id = _place_parallel_tutorial(day, s2, sec, used_secs)
                     if b_id is None:
                         b_id = _place_parallel_tutorial(day, s2, sec, set())
                     if b_id is not None:
                         total_created += 1
 
+                # PASS 1 — place at the best slot where a lab room is actually free,
+                # so labs prefer a real room across ALL candidate slots (not just the
+                # first feasible one) and don't grab a roomless slot prematurely.
+                for priority, _free, day, s1, s2 in candidates:
+                    sec_used = set(pair_used_slots[day])
+                    for ts_obj in TimeSlot.objects.filter(section=sec, day=day):
+                        sec_used.add(ts_obj.slot)
+                    if s1 in sec_used or s2 in sec_used:
+                        continue
+                    prof = pick_professor(ls, day, s1, s2, slot_type='lab')
+                    if not prof:
+                        continue
+                    # No 3 labs/classes in a row: a lab is one 2-slot session.
+                    if not prof_chain_ok(prof.id, day, s1, s2):
+                        continue
+                    # Remember the first usable slot in case no room is free anywhere.
+                    if roomless_fallback is None:
+                        roomless_fallback = (day, s1, s2, prof)
+                    # Prefer the subject's dedicated/pinned lab; else any other free
+                    # lab room (an over-subscribed dedicated lab no longer drops the
+                    # class — that is why COE-1's labs were going missing).
+                    if ls.lab_room and is_room_free(ls.lab_room.id, day, s1, 2):
+                        lab_room = ls.lab_room
+                    else:
+                        lab_room = get_free_room(dept_labs, day, s1, slots_needed=2,
+                                                  subject_name=ls.name, subject_code=ls.code)
+                    if lab_room is None:
+                        continue   # no lab room free at this slot — keep looking
+                    _place_lab_block(day, s1, s2, prof, lab_room)
                     placed = True
                     break
 
+                # PASS 2 — last resort: every usable slot had all lab rooms busy.
+                # Place the lab roomless so it still appears on the timetable rather
+                # than being silently dropped.
+                if not placed and roomless_fallback is not None:
+                    day, s1, s2, prof = roomless_fallback
+                    _place_lab_block(day, s1, s2, prof, None)
+                    placed = True
+
                 if not placed:
                     clash_warnings.append(
-                        f"{ls.name} ({sec}) — no available lab slot "
-                        f"(professor may be at workload limit or room unavailable)"
-                    )
+                        f"Lab {ls.name} ({sec}) — no free 2-slot block with the professor available")
+
+                if not placed:
+                    unplaced_labs.append({
+                        'ls': ls, 'sec': sec, 'w_days': effective_w_days,
+                        'avail_slots': avail_slots, 'lunch_slots': lunch_slots,
+                        'dept_labs': dept_labs, 'preferred_starts': preferred_starts})
         # ── TUTORIAL SCHEDULING ────────────────────────────────────────────────
         # Tutorials that were already placed alongside a partner lab are skipped.
         for sec in sections_in_pair:
@@ -3217,7 +3502,7 @@ def generate_timetable_smart(request):
                     sec_used = {ts.slot for ts in TimeSlot.objects.filter(section=sec, day=day)}
                     if s in sec_used or s in pair_used_slots[day]:
                         continue
-                    prof = pick_professor(tsubj, day, s)
+                    prof = pick_professor(tsubj, day, s, slot_type='tutorial')
                     if not prof:
                         continue
                     if not prof_chain_ok(prof.id, day, s, s):
@@ -3237,6 +3522,72 @@ def generate_timetable_smart(request):
 
                 if not placed:
                     clash_warnings.append(f"Tutorial {tsubj.name} ({sec}) — no free slot")
+
+    # ── RETRY PASS for labs the greedy first pass could not seat ────────────────
+    # Re-attempt each unplaced lab now that the whole schedule is known. A lab is
+    # seated if its section, its professor (within workload) and SOME lab room are
+    # all free for a 2-slot block (the dedicated room first, any free lab room as
+    # fallback). This recovers labs that were only blocked by scheduling order.
+    for item in unplaced_labs:
+        ls, sec = item['ls'], item['sec']
+        if TimeSlot.objects.filter(subject=ls, section=sec).exists():
+            continue  # already seated on a later attempt
+        placed = False
+        cands = []
+        for day in item['w_days']:
+            if sec.free_day and day == sec.free_day:
+                continue
+            sec_used = {s for s in item['avail_slots']
+                        if TimeSlot.objects.filter(section=sec, day=day, slot=s).exists()}
+            for s1 in item['avail_slots']:
+                s2 = s1 + 1
+                if (s2 in item['avail_slots'] and s1 not in sec_used and s2 not in sec_used
+                        and s1 not in LAB_FORBIDDEN_START
+                        and s1 not in item['lunch_slots'] and s2 not in item['lunch_slots']):
+                    pri = 0 if s1 in item['preferred_starts'] else 1
+                    free_rooms = sum(1 for r in item['dept_labs'] if is_room_free(r.id, day, s1, 2))
+                    cands.append((pri, free_rooms, day, s1, s2))
+        # Prefer slots with the MOST free lab rooms (spread), then preferred starts.
+        cands.sort(key=lambda x: (x[0], -x[1], x[3]))
+        roomless_fb = None
+        for _pri, _free, day, s1, s2 in cands:
+            prof = pick_professor(ls, day, s1, s2, slot_type='lab')
+            if not prof or not prof_chain_ok(prof.id, day, s1, s2):
+                continue
+            if roomless_fb is None:
+                roomless_fb = (day, s1, s2, prof)
+            if ls.lab_room and is_room_free(ls.lab_room.id, day, s1, 2):
+                lab_room = ls.lab_room
+            else:
+                lab_room = get_free_room(item['dept_labs'], day, s1, slots_needed=2,
+                                         subject_name=ls.name, subject_code=ls.code)
+            if lab_room is None:
+                continue   # keep looking for a slot that has a free lab room
+            TimeSlot.objects.create(day=day, slot=s1, subject=ls, professor=prof, section=sec, room=lab_room)
+            TimeSlot.objects.create(day=day, slot=s2, subject=ls, professor=prof, section=sec, room=lab_room)
+            mark_prof_busy(prof.id, day, s1, slot_mins=60)
+            mark_prof_busy(prof.id, day, s2, slot_mins=60)
+            add_prof_session(prof.id, day, s1, s2)
+            mark_room_busy(lab_room, day, s1, 2)
+            total_created += 2
+            placed = True
+            break
+        # Last resort: a usable slot exists but every lab room there is full — place
+        # the lab roomless so it still appears (a room can be assigned manually).
+        if not placed and roomless_fb is not None:
+            day, s1, s2, prof = roomless_fb
+            TimeSlot.objects.create(day=day, slot=s1, subject=ls, professor=prof, section=sec, room=None)
+            TimeSlot.objects.create(day=day, slot=s2, subject=ls, professor=prof, section=sec, room=None)
+            mark_prof_busy(prof.id, day, s1, slot_mins=60)
+            mark_prof_busy(prof.id, day, s2, slot_mins=60)
+            add_prof_session(prof.id, day, s1, s2)
+            no_room_warn.append(f"No lab room for {ls.name} ({sec})")
+            total_created += 2
+            placed = True
+        if not placed:
+            clash_warnings.append(
+                f"{ls.name} ({sec}) — no available lab slot "
+                f"(professor at workload limit or section fully booked)")
 
     # ── G1 / G2 Professor Sync Pass ─────────────────────────────────────────────
     # THEORY/NPTEL: G1 and G2 attend the same physical lecture → must have same professor.
@@ -3265,6 +3616,37 @@ def generate_timetable_smart(request):
                 ts_obj.professor_id = matched_prof_id
                 ts_obj.save()
 
+    # ── Final safety: resolve any faculty / room / section double-booking ──────
+    # Guarantees no professor is in two places at once, no room hosts two different
+    # classes at once, and no section/group has two different subjects at once.
+    # Co-taught lectures (the SAME subject for several groups in one room) are NOT a
+    # clash; electives run in PARALLEL for a section (student picks one) so they are
+    # exempt from the section check. The later (higher-id) conflicting slot is dropped.
+    seen_prof, seen_room, seen_sec = {}, {}, {}
+    for ts_obj in TimeSlot.objects.select_related('subject', 'section').order_by('id'):
+        pkey = (ts_obj.professor_id, ts_obj.day, ts_obj.slot)
+        if pkey in seen_prof and seen_prof[pkey] != ts_obj.subject.name:
+            clash_warnings.append(
+                f"Removed clash: {ts_obj.subject.name} (prof busy {ts_obj.day} slot {ts_obj.slot})")
+            ts_obj.delete()
+            continue
+        seen_prof[pkey] = ts_obj.subject.name
+        if ts_obj.room_id:
+            rkey = (ts_obj.room_id, ts_obj.day, ts_obj.slot)
+            if rkey in seen_room and seen_room[rkey] != ts_obj.subject.name:
+                ts_obj.delete()
+                continue
+            seen_room[rkey] = ts_obj.subject.name
+        # Section double-booking — electives are parallel options, so skip them.
+        if ts_obj.section_id and not getattr(ts_obj.subject, 'is_elective', False):
+            skey = (ts_obj.section_id, ts_obj.day, ts_obj.slot)
+            if skey in seen_sec and seen_sec[skey] != ts_obj.subject.name:
+                clash_warnings.append(
+                    f"Removed clash: {ts_obj.subject.name} (section busy {ts_obj.day} slot {ts_obj.slot})")
+                ts_obj.delete()
+                continue
+            seen_sec[skey] = ts_obj.subject.name
+
     # ── Sync Subject.professors M2M → match actual TimeSlot.professor ─────────
     # Workload report reads Subject.professors (set during CSV import).
     # After generation + sync pass above, ensure the M2M reflects the real
@@ -3282,8 +3664,32 @@ def generate_timetable_smart(request):
                 f"⚠️ {prof.name} assigned {hours}h but limit is {prof.max_workload_hours_per_week}h/week"
             )
 
+    # ── Validation engine: confirm the finalized schedule is conflict-free ─────
+    from .validation import find_conflicts, summary_lines
+    vres = find_conflicts()
+
     # ── Flash messages ─────────────────────────────────────────────────────────
     messages.success(request, f'✅ Timetable generated! {total_created} time slots created.')
+    if vres['has_hard']:
+        # Should not happen — the safety pass above removes them — but report if so.
+        messages.error(request,
+            f"❌ Validation found {vres['total_hard']} unresolved conflict(s).")
+        for line in summary_lines(vres)[:5]:
+            messages.error(request, f'   • {line}')
+    else:
+        messages.success(request,
+            '✅ Validation passed — no faculty, room or section conflicts.')
+    if vres['workload']:
+        messages.warning(request,
+            f"⚠️ {len(vres['workload'])} professor(s) over their workload limit "
+            "(see Validate Timetable).")
+    if vres['nptel_prelunch']:
+        messages.warning(request,
+            f"⏰ {len(vres['nptel_prelunch'])} NPTEL lecture(s) placed before lunch "
+            "(no after-lunch slot was free).")
+    if vres['capacity']:
+        messages.warning(request,
+            f"🪑 {len(vres['capacity'])} class(es) assigned a room smaller than the section.")
     for w in clash_warnings[:5]:
         messages.warning(request, f'⚠️ {w}')
     for w in no_room_warn[:3]:
@@ -3296,6 +3702,21 @@ def generate_timetable_smart(request):
         messages.warning(request, f'...and {len(clash_warnings) - 5} more scheduling warnings.')
 
     return redirect('dashboard')
+
+
+# ── Timetable validation report ────────────────────────────────────────────────
+
+def validate_timetable(request):
+    """On-demand conflict report for the current timetable. Department Admins see
+    only their own department; full Admins see everything."""
+    from .validation import find_conflicts
+    dept_id = acc.current_department_id(request)
+    res = find_conflicts(dept_id=dept_id)
+    dept = Department.objects.filter(id=dept_id).first() if dept_id else None
+    return render(request, 'validation_report.html', {
+        'res': res, 'dept': dept,
+        'slot_times': SLOT_TIMES_DISPLAY,
+    })
 
 
 # ── Department Settings CRUD ───────────────────────────────────────────────────
@@ -3645,95 +4066,72 @@ def workload_report(request):
             return '—'
         return f'{slots} hrs'
 
-    # FIX: Query Subject directly so lectures_per_week counted ONCE per subject,
-    # not once per generated timeslot — this matches the professor schedule page.
-    subj_qs = (
-        Subject.objects
-        .select_related('section__course__department', 'section')
-        .prefetch_related('professors')
-        .order_by('section__course__department__name',
-                  'section__course__name',
-                  'section__year', 'section__group')
-    )
+    # Build the report from the GENERATED timetable (TimeSlots) so it is always TRUE
+    # to what was actually scheduled, and recomputed live on every visit. One contact
+    # hour per distinct (day, slot) a professor teaches: a shared theory/elective
+    # lecture (G1+G2 at the same time) counts once; a lab's two slots count as two.
+    ts_qs = (TimeSlot.objects
+             .select_related('subject', 'professor', 'section__course__department', 'section')
+             .order_by('section__course__department__name', 'section__course__name', 'section__year'))
     if dept_filter_id:
-        subj_qs = subj_qs.filter(section__course__department_id=dept_filter_id)
+        ts_qs = ts_qs.filter(section__course__department_id=dept_filter_id)
 
-    # dept_name -> { prof_id -> { name, max, rows:[], l, t, p, total } }
     dept_profs  = defaultdict(OrderedDict)
     dept_totals = defaultdict(lambda: {'l':0,'t':0,'p':0,'total':0})
 
-    # THEORY / NPTEL de-duplication set:
-    # key = (prof_id, subject_name, section_name, year, course_id)
-    # Prevents counting the same shared lecture twice (once for G1, once for G2)
-    theory_counted = set()
+    seen_slot = set()                 # (prof, subject, eff-sec, year, course, day, slot)
+    prof_meta = {}                    # prof_id -> {name, max, dept}
+    prof_rows = defaultdict(dict)     # prof_id -> {(subject, eff-sec) -> row}
 
-    for subj in subj_qs:
-        sec   = subj.section
-        if not sec:
+    for ts in ts_qs:
+        sec = ts.section
+        if not sec or not ts.professor:
             continue
-        stype = subj.subject_type
-        n     = subj.lectures_per_week
-        l_val = n if stype in ('THEORY', 'NPTEL') else 0
-        t_val = n if stype == 'TUTORIAL' else 0
-        p_val = n if stype == 'LAB' else 0
+        prof, subj = ts.professor, ts.subject
+        eff = sec.get_effective_section_name()
+        rkey = (subj.name, eff)
+        slot_key = (prof.id, subj.name, eff, sec.year, sec.course_id, ts.day, ts.slot)
+        if slot_key in seen_slot:
+            # Shared lecture already counted this hour — just note the extra group.
+            r = prof_rows[prof.id].get(rkey)
+            if r is not None:
+                r['groups'].add(sec.group)
+            continue
+        seen_slot.add(slot_key)
 
-        dept_name  = sec.course.department.name
-        year_label = sec.get_year_display_label()
-        sem_label  = f"{sec.course.get_display_name()} {year_label}"
+        prof_meta[prof.id] = {'name': prof.name, 'max': prof.max_workload_hours_per_week,
+                              'dept': sec.course.department.name}
+        r = prof_rows[prof.id].get(rkey)
+        if r is None:
+            r = {'subject': subj.name, 'code': subj.code or '',
+                 'class_sem': f"{sec.course.get_display_name()} {sec.get_year_display_label()}",
+                 'groups': set(), 'l': 0, 't': 0, 'p': 0}
+            prof_rows[prof.id][rkey] = r
+        r['groups'].add(sec.group)
+        if subj.subject_type == 'LAB':
+            r['p'] += 1
+        elif subj.subject_type == 'TUTORIAL':
+            r['t'] += 1
+        else:                                   # theory / NPTEL / elective
+            r['l'] += 1
 
-        for prof in subj.professors.all():
-            pid = prof.id
-
-            # ── THEORY / NPTEL shared-lecture dedup ──────────────────────────
-            # G1 and G2 attend the SAME physical lecture → count hours ONCE.
-            # But show the row as "G1 & G2" so it's clear both groups are covered.
-            # G2 row is completely skipped; G1 row is updated to say "G1 & G2".
-            dedup_key = (pid, subj.name, sec.section_name, sec.year, sec.course_id)
-            if stype in ('THEORY', 'NPTEL'):
-                if sec.group == 'G2':
-                    # G2 — check if G1 row already added for this prof+subject+section
-                    if dedup_key in theory_counted:
-                        # G1 row exists — update its group label to "G1 & G2"
-                        if pid in dept_profs.get(dept_name, {}):
-                            for row in dept_profs[dept_name][pid]['rows']:
-                                if (row['subject'] == subj.name
-                                        and row.get('_sec_name') == sec.section_name
-                                        and row.get('group') == 'G1'):
-                                    row['group'] = 'G1 & G2'
-                                    break
-                        continue  # Don't add G2 as separate row or add extra hours
-                elif sec.group == 'G1':
-                    theory_counted.add(dedup_key)  # Record so G2 merges into this
-
-            if pid not in dept_profs[dept_name]:
-                dept_profs[dept_name][pid] = {
-                    'name': prof.name,
-                    'max':  prof.max_workload_hours_per_week,
-                    'rows': [], 'l':0, 't':0, 'p':0, 'total':0,
-                }
-            pe = dept_profs[dept_name][pid]
-            row_mins = l_val*1 + t_val*1 + p_val*2   # contact slots: theory/tut=1, lab=2
+    for pid, rows in prof_rows.items():
+        meta = prof_meta[pid]; dn = meta['dept']
+        pe = {'name': meta['name'], 'max': meta['max'], 'rows': [],
+              'l': 0, 't': 0, 'p': 0, 'total': 0, 'mins': 0}
+        for r in rows.values():
+            total = r['l'] + r['t'] + r['p']
             pe['rows'].append({
-                'subject':      subj.name,
-                'code':         subj.code or '',
-                'class_sem':    sem_label,
-                'group':        sec.group,
-                '_sec_name':    sec.section_name,   # internal — for G2 merge lookup
-                'l': l_val, 't': t_val, 'p': p_val,
-                'total':        l_val + t_val + p_val,
-                'time_display': mins_to_display(row_mins),
+                'subject': r['subject'], 'code': r['code'], 'class_sem': r['class_sem'],
+                'group': ' & '.join(sorted(r['groups'])),
+                'l': r['l'], 't': r['t'], 'p': r['p'], 'total': total,
+                'time_display': mins_to_display(total),
             })
-            pe['l']     += l_val
-            pe['t']     += t_val
-            pe['p']     += p_val
-            pe['total'] += l_val + t_val + p_val
-            pe['mins']  = pe.get('mins', 0) + row_mins
-
-            dt = dept_totals[dept_name]
-            dt['l']     += l_val
-            dt['t']     += t_val
-            dt['p']     += p_val
-            dt['total'] += l_val + t_val + p_val
+            pe['l'] += r['l']; pe['t'] += r['t']; pe['p'] += r['p']
+            pe['total'] += total; pe['mins'] += total
+        dept_profs[dn][pid] = pe
+        dt = dept_totals[dn]
+        dt['l'] += pe['l']; dt['t'] += pe['t']; dt['p'] += pe['p']; dt['total'] += pe['total']
 
     # Add time_display to each prof entry
     for dept_name, prof_map in dept_profs.items():
@@ -3806,45 +4204,51 @@ def workload_report_csv(request):
                      'Class-Sem','Group','L','T','P','Total',
                      'Prof Max hrs/wk','Status'])
 
-    # FIX: Use Subject (not TimeSlot) so lectures_per_week counted once per subject
-    subj_qs = (
-        Subject.objects
-        .select_related('section__course__department', 'section')
-        .prefetch_related('professors')
-        .order_by('section__course__department__name',
-                  'section__course__name', 'section__year', 'section__group')
-    )
+    # Computed from the GENERATED timetable (TimeSlots) — true to what was scheduled.
+    ts_qs = (TimeSlot.objects
+             .select_related('subject', 'professor', 'section__course__department', 'section')
+             .order_by('section__course__department__name', 'section__course__name', 'section__year'))
     if dept_filter_id:
-        subj_qs = subj_qs.filter(section__course__department_id=dept_filter_id)
+        ts_qs = ts_qs.filter(section__course__department_id=dept_filter_id)
 
     from collections import defaultdict
     prof_totals = defaultdict(int)
     prof_max    = {}
-    rows_list   = []
-    for subj in subj_qs:
-        sec   = subj.section
-        if not sec:
+    seen_slot   = set()
+    agg = {}   # (pid, subject, eff-sec) -> row
+    for ts in ts_qs:
+        sec = ts.section
+        if not sec or not ts.professor:
             continue
-        stype = subj.subject_type
-        n     = subj.lectures_per_week
-        l_v   = n if stype in ('THEORY','NPTEL') else 0
-        t_v   = n if stype == 'TUTORIAL' else 0
-        p_v   = n if stype == 'LAB' else 0
-        for prof in subj.professors.all():
-            pid = prof.id
-            prof_totals[pid] += l_v + t_v + p_v
-            prof_max[pid]     = prof.max_workload_hours_per_week
-            rows_list.append({
-                'dept':  sec.course.department.name,
-                'prof':  prof.name,
-                'subj':  subj.name,
-                'code':  subj.code or '',
-                'sem':   f"{sec.course.get_display_name()} {sec.get_year_display_label()}",
-                'grp':   sec.group,
-                'l': l_v, 't': t_v, 'p': p_v,
-                'total': l_v + t_v + p_v,
-                'pid':   pid,
-            })
+        prof, subj = ts.professor, ts.subject
+        eff = sec.get_effective_section_name()
+        rkey = (prof.id, subj.name, eff)
+        slot_key = (prof.id, subj.name, eff, sec.year, sec.course_id, ts.day, ts.slot)
+        if slot_key in seen_slot:
+            if rkey in agg:
+                agg[rkey]['groups'].add(sec.group)
+            continue
+        seen_slot.add(slot_key)
+        prof_max[prof.id] = prof.max_workload_hours_per_week
+        r = agg.get(rkey)
+        if r is None:
+            r = {'dept': sec.course.department.name, 'prof': prof.name, 'subj': subj.name,
+                 'code': subj.code or '', 'sem': f"{sec.course.get_display_name()} {sec.get_year_display_label()}",
+                 'groups': set(), 'l': 0, 't': 0, 'p': 0, 'pid': prof.id}
+            agg[rkey] = r
+        r['groups'].add(sec.group)
+        if subj.subject_type == 'LAB':
+            r['p'] += 1
+        elif subj.subject_type == 'TUTORIAL':
+            r['t'] += 1
+        else:
+            r['l'] += 1
+        prof_totals[prof.id] += 1
+    rows_list = []
+    for r in agg.values():
+        r['grp'] = ' & '.join(sorted(r['groups']))
+        r['total'] = r['l'] + r['t'] + r['p']
+        rows_list.append(r)
 
     for r in rows_list:
         pid = r['pid']

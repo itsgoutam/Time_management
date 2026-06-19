@@ -111,6 +111,12 @@ class Section(models.Model):
     custom_year = models.CharField(max_length=50, blank=True, default='')
     section_name = models.CharField(max_length=20, choices=SECTION_CHOICES, default='A')
     custom_section_name = models.CharField(max_length=50, blank=True, default='')
+    # Student branch/programme this section belongs to (e.g. 'CSE', 'COE'), taken
+    # from the sections CSV 'Program Name' column. A subject is offered to a section
+    # when the section's program is one of the subject's Program_name branches — this
+    # lets a subject owned by another department (e.g. Applied Science) still be
+    # taught to the right students.
+    program = models.CharField(max_length=30, blank=True, default='')
     group = models.CharField(max_length=10, choices=GROUP_CHOICES)
     fixed_room = models.ForeignKey(
         Room, on_delete=models.SET_NULL, null=True, blank=True,
@@ -161,6 +167,12 @@ class Professor(models.Model):
     department = models.ForeignKey(
         'Department', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='professors')
+    # Cross-department mapping for SHARED professors. A professor referenced by the
+    # same teacher_id in more than one department's CSV is mapped to all of them and
+    # is visible to each of those Department Admins. The `department` FK above stays
+    # as the "home" department; `departments` is the full set they belong to.
+    departments = models.ManyToManyField(
+        'Department', blank=True, related_name='shared_professors')
     email = models.EmailField(blank=True)
     max_workload_hours_per_week = models.IntegerField(default=20)
     specialization_subjects = models.TextField(blank=True, default='')
@@ -297,6 +309,31 @@ class ProfessorFixedSlot(models.Model):
 
     def __str__(self):
         return f"{self.professor.name} fixed {self.subject_name} — {self.day} {self.get_time_range_display()}"
+
+
+class TeachingAssignment(models.Model):
+    """An explicit "this teacher teaches this subject for this class" record taken
+    from the professors CSV. It is authoritative: the timetable assigns exactly the
+    professor named here, so each professor's workload reflects only their own
+    assigned subjects."""
+    professor = models.ForeignKey(Professor, on_delete=models.CASCADE, related_name='assignments')
+    subject_name = models.CharField(max_length=120)
+    semester = models.CharField(max_length=10, blank=True, default='')      # e.g. '4'
+    section_name = models.CharField(max_length=50, blank=True, default='')  # e.g. 'CS-1', 'COE'
+    # The department that "owns" this assignment — the department of the section it
+    # targets. Lets a re-upload of ONE department's CSV replace only that department's
+    # assignments for a SHARED professor (teacher_id in two departments), leaving the
+    # other department's assignments — and so the professor's combined timetable —
+    # intact.
+    department = models.ForeignKey(
+        'Department', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='teaching_assignments')
+    # Specific group this teacher takes (e.g. 'G1'). Blank = the whole section
+    # (both groups). Lets labs/tutorials assign a different teacher per group.
+    group = models.CharField(max_length=10, blank=True, default='')
+
+    def __str__(self):
+        return f"{self.professor.name} → {self.subject_name} (Sem {self.semester} {self.section_name})"
 
 
 class Subject(models.Model):

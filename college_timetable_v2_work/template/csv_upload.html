@@ -76,6 +76,9 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
   padding:5px 11px;border-radius:7px;background:#f0f4ff;color:var(--blue);text-decoration:none;
   border:1.5px solid #bfdbfe;transition:all .2s;margin-top:10px;}
 .tmpl-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+.tmpl-btn.excel{background:#f0fdf4;color:#15803d;border-color:#bbf7d0;}
+.tmpl-btn.excel:hover{background:#16a34a;color:#fff;border-color:#16a34a;}
+.tmpl-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 
 /* Options card */
 .option-row{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1.5px solid #f0f4ff;}
@@ -223,18 +226,21 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
         </div>
         <div class="card-body">
           <div class="upload-zone" id="zone-subjects">
-            <input type="file" name="subjects_csv" accept=".csv" onchange="markZone(this,'zone-subjects')">
+            <input type="file" name="subjects_csv" accept=".csv,.xlsx,.xlsm" onchange="markZone(this,'zone-subjects')">
             <div class="upload-icon">📚</div>
-            <div class="upload-label">Click or drag subjects.csv</div>
-            <div class="upload-sublabel">subject_id · subject_name · subject_type · lectures_per_week · allowed_groups · specialization_required</div>
+            <div class="upload-label">Click or drag subjects.csv / .xlsx</div>
+            <div class="upload-sublabel">Department_name · Subject_id · Subject_name · Sub_type · Theory_per_week_per_section · Tutorial_per_week_per_group · Lab_per_week_per_group · Allowed_groups · Course_name · Program_name · Semester</div>
             <div class="upload-filename" id="fname-subjects"></div>
           </div>
           <div class="fields-hint">
-            <code>subject_type: theory / lab / tutorial / nptel</code>
-            <code>allowed_groups: G1 / G2 / Both</code>
-            <code>specialization_required: Yes / No</code>
+            <code>Sub_type: REGULAR / ELECTIVE / NPTEL (NPTEL sessions = Theory_per_week_per_section)</code>
+            <code>Lab/Tutorial_per_week_per_group: sessions per group (1, or 2 for a project)</code>
+            <code>Program_name: student branch — CSE or "CSE,COE" · Department_name: teaching faculty (may differ)</code>
           </div>
-          <a href="/csv-template/subjects/" class="tmpl-btn">⬇️ Download Template</a>
+          <div class="tmpl-row">
+            <a href="/csv-template/subjects/" class="tmpl-btn">⬇️ CSV Template</a>
+            <a href="/csv-template/subjects/excel/" class="tmpl-btn excel">⬇️ Excel Template</a>
+          </div>
         </div>
       </div>
 
@@ -249,17 +255,21 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
         </div>
         <div class="card-body">
           <div class="upload-zone" id="zone-profs">
-            <input type="file" name="professors_csv" accept=".csv" onchange="markZone(this,'zone-profs')">
+            <input type="file" name="professors_csv" accept=".csv,.xlsx,.xlsm" onchange="markZone(this,'zone-profs')">
             <div class="upload-icon">👨‍🏫</div>
-            <div class="upload-label">Click or drag professors.csv</div>
-            <div class="upload-sublabel">professor_id · professor_name · max_workload_hours_per_week · specialization_subjects</div>
+            <div class="upload-label">Click or drag professors.csv / .xlsx</div>
+            <div class="upload-sublabel">Department_name · Teacher_id · Teacher_name · Max_Workload_Hours_per_week · Subject_name · Program_name · Course_name · Semester · Section · Group · Block/Fixed time</div>
             <div class="upload-filename" id="fname-profs"></div>
           </div>
           <div class="fields-hint">
-            <code>max_workload_hours_per_week: e.g. 18</code>
-            <code>specialization_subjects: comma-separated</code>
+            <code>One row per subject a teacher takes. Max_Workload e.g. 18</code>
+            <code>Section: CS-1 · Group: G1 / G2 / "G1,G2" (different teacher per group OK)</code>
+            <code>Block = not free then · Fixed = must teach then (Day,HH:MM to HH:MM)</code>
           </div>
-          <a href="/csv-template/professors/" class="tmpl-btn">⬇️ Download Template</a>
+          <div class="tmpl-row">
+            <a href="/csv-template/professors/" class="tmpl-btn">⬇️ CSV Template</a>
+            <a href="/csv-template/professors/excel/" class="tmpl-btn excel">⬇️ Excel Template</a>
+          </div>
         </div>
       </div>
 
@@ -274,7 +284,7 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
         </div>
         <div class="card-body">
           <div class="upload-zone" id="zone-rooms">
-            <input type="file" name="rooms_csv" accept=".csv" onchange="markZone(this,'zone-rooms')">
+            <input type="file" name="rooms_csv" accept=".csv,.xlsx,.xlsm" onchange="markZone(this,'zone-rooms')">
             <div class="upload-icon">🚪</div>
             <div class="upload-label">Click or drag rooms.csv</div>
             <div class="upload-sublabel">room_id · room_name · room_type · capacity · allowed_subjects</div>
@@ -284,7 +294,10 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
             <code>room_type: classroom / lab</code>
             <code>allowed_subjects: "all" or comma-separated names</code>
           </div>
-          <a href="/csv-template/rooms/" class="tmpl-btn">⬇️ Download Template</a>
+          <div class="tmpl-row">
+            <a href="/csv-template/rooms/" class="tmpl-btn">⬇️ CSV Template</a>
+            <a href="/csv-template/rooms/excel/" class="tmpl-btn excel">⬇️ Excel Template</a>
+          </div>
         </div>
       </div>
 
@@ -299,47 +312,54 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
         </div>
         <div class="card-body">
           <div class="upload-zone" id="zone-sections">
-            <input type="file" name="sections_csv" accept=".csv" onchange="markZone(this,'zone-sections')">
+            <input type="file" name="sections_csv" accept=".csv,.xlsx,.xlsm" onchange="markZone(this,'zone-sections')">
             <div class="upload-icon">🏫</div>
-            <div class="upload-label">Click or drag sections.csv</div>
-            <div class="upload-sublabel">department · semester · section · group · fixed_room · course · <strong>free_day</strong></div>
+            <div class="upload-label">Click or drag sections.csv / .xlsx</div>
+            <div class="upload-sublabel">Department_name · Semester · section · group · Fixed_room · Course_name · Program_name · <strong>Free_day</strong> · Class_Count · Day · Section_Start_time</div>
             <div class="upload-filename" id="fname-sections"></div>
           </div>
           <div class="fields-hint">
-            <code>semester: 1–8 (or 3rd, 5th …)</code>
-            <code>group: G1 / G2</code>
-            <code>fixed_room: room id/name (optional)</code>
+            <code>Semester: 4th (or 1–8) · section: CS-1 · group: G1 / G2</code>
+            <code>Course_name: B.TECH (degree) · Program_name: CSE (branch)</code>
+            <code>Fixed_room: room id/name (optional)</code>
           </div>
-          <a href="/csv-template/sections/" class="tmpl-btn">⬇️ Download Template</a>
+          <div class="tmpl-row">
+            <a href="/csv-template/sections/" class="tmpl-btn">⬇️ CSV Template</a>
+            <a href="/csv-template/sections/excel/" class="tmpl-btn excel">⬇️ Excel Template</a>
+          </div>
         </div>
       </div>
 
     </div>
 
-    <!-- Dept Settings (optional) -->
-    <div class="section-heading anim">⚙️ Department Settings</div>
+    <!-- Dept Settings — managed by the Super Admin only -->
+    {% if auth_is_admin %}
+    <div class="section-heading anim">⚙️ Department Settings <span style="font-size:.7rem;font-weight:600;color:var(--muted);">(Super Admin — set once)</span></div>
     <div class="card anim" style="margin-bottom:28px;">
       <div class="card-header">
         <div class="card-header-icon">⚙️</div>
         <div>
-          <div class="card-title">Department Settings CSV <span style="font-size:.72rem;background:#fffbeb;color:#d97706;border-radius:6px;padding:2px 8px;border:1.5px solid #fde68a;margin-left:8px;">Optional</span></div>
-          <div class="card-subtitle">Customise lunch breaks &amp; start times per department</div>
+          <div class="card-title">Department Settings CSV <span style="font-size:.72rem;background:#fffbeb;color:#d97706;border-radius:6px;padding:2px 8px;border:1.5px solid #fde68a;margin-left:8px;">Set once</span></div>
+          <div class="card-subtitle">Lunch breaks &amp; start times per department — department admins do NOT need to re-upload this.</div>
         </div>
       </div>
       <div class="card-body" style="display:flex;gap:28px;align-items:flex-start;">
         <div style="flex:1;">
           <div class="upload-zone" id="zone-dept" style="padding:14px 18px;">
-            <input type="file" name="dept_settings_csv" accept=".csv" onchange="markZone(this,'zone-dept')">
+            <input type="file" name="dept_settings_csv" accept=".csv,.xlsx,.xlsm" onchange="markZone(this,'zone-dept')">
             <div style="display:flex;align-items:center;gap:14px;">
               <div class="upload-icon" style="margin:0;font-size:1.4rem;">⚙️</div>
               <div>
                 <div class="upload-label" style="text-align:left;">Click to upload dept_settings.csv</div>
-                <div class="upload-sublabel" style="text-align:left;">department · lunch_start_time · lunch_end_time · department_start_time</div>
+                <div class="upload-sublabel" style="text-align:left;">Department_name · Lunch_Start_time · Department_Start_time</div>
                 <div class="upload-filename" id="fname-dept"></div>
               </div>
             </div>
           </div>
-          <a href="/csv-template/dept_settings/" class="tmpl-btn">⬇️ Download Template</a>
+          <div class="tmpl-row">
+            <a href="/csv-template/dept_settings/" class="tmpl-btn">⬇️ CSV Template</a>
+            <a href="/csv-template/dept_settings/excel/" class="tmpl-btn excel">⬇️ Excel Template</a>
+          </div>
         </div>
         <div style="flex:1;background:#f5f8ff;border-radius:6px;padding:16px 18px;border:1.5px solid #bfdbfe;">
           <div style="font-family:'Roboto',sans-serif;font-size:.82rem;font-weight:700;color:var(--blue);margin-bottom:8px;">📌 Manual Override Available</div>
@@ -351,6 +371,19 @@ main{padding:36px 40px;max-width:1100px;margin:0 auto;}
         </div>
       </div>
     </div>
+    {% else %}
+    <!-- Department admins: dept settings are configured by the Super Admin -->
+    <div class="card anim" style="margin-bottom:28px;background:#f5f8ff;border-color:#bfdbfe;">
+      <div class="card-body" style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:1.5rem;">⚙️</div>
+        <div style="font-size:.82rem;color:var(--muted);line-height:1.6;">
+          <strong style="color:var(--blue);">Department settings are managed by the Super Admin.</strong><br>
+          You only need to upload the four files above (Rooms, Sections, Subjects, Professors).
+          Lunch break and start times are already set for your department and stay in place when you re-upload.
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Options -->
     <div class="section-heading anim">🛠️ Import Options</div>

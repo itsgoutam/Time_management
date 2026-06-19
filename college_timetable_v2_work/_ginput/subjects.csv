@@ -1,0 +1,42 @@
+﻿Department_name,Subject_id,Subject_Name,Sub_type,Theory_per_week_per_section,Tutorial_per_week_per_group,Lab_per_week_per_group,Allowed_groups,Course_name,Program_name,Semester
+Applied Science,AGCS-21401,Discrete Structures,REGULAR,3,1,0,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21402,Relational Database Management Systems,REGULAR,3,1,0,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21403,Programming in Python,NPTEL,0,1,0,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21404,Operating Systems,REGULAR,3,0,0,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21405,Web Development,REGULAR,3,0,0,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21406,Relational Database Management Systems Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21407,Programming in Python Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21408,Operating Systems Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",4th
+Computer Science & Engineering,AGCS-21409,Web Development Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",4th
+Applied Science,AGAP - 21401,Engineering Aptitude - I,REGULAR,0,1,0,G1 G2,B.TECH,"CSE,COE",4th
+Applied Science,AGFE - 21402,Functional English - II,REGULAR,0,1,0,G1 G2,B.TECH,"CSE,COE",4th
+Applied Science,AGMC- 21401,Essence of Indian Knowledge Tradition,REGULAR,1,0,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21601,Machine Learning,NPTEL,3,1,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21602,Cloud Computing,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21603,Big Data Analytics,REGULAR,3,0,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21604,Professional Elective Course-2 (PEC-2)- IS,ELECTIVE,3,0,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21605,Mobile Application Development,REGULAR,3,1,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21606,Machine Learning Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21607,Cloud Computing Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21608,Big Data Analytics Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21609,Mobile Application Development Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",6th
+Applied Science,AGFE - 21603,Functional English - III,REGULAR,0,1,0,G1 G2,B.TECH,"CSE,COE",6th
+Applied Science,AGAP - 21603,Engineering Aptitude - II,REGULAR,0,1,0,G1 G2,B.TECH,"CSE,COE",6th
+Computer Science & Engineering,AGCS - 21701,Data Science,REGULAR,3,1,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702B,Professional Elective Course-3 (PEC-3)- DL,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702C,Professional Elective Course-3 (PEC-3)- CV,ELECTIVE,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702F,Professional Elective Course-4 (PEC-4)- IOT,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGOE- 21709,Open Elective- Management of Human Resource,ELECTIVE,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21703,Data Science Lab,REGULAR,0,0,1,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21704,Major Project Lab,REGULAR,0,0,2,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,MTCS208-18,Professional Elective Course-3 (PEC-3)- CV,ELECTIVE,3,0,0,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,MTCS208-18,Professional Elective Course-3 (PEC-3)- CV Lab,ELECTIVE,0,0,2,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,MTA01,Audit Course,REGULAR,2,0,0,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,AGCS- 21504C,Professional Elective Course-3 (PEC-1)- SC,ELECTIVE,3,0,0,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,MTCS211-18,Professional Elective Course-4 (PEC-4)- DF,ELECTIVE,3,0,0,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,MTCS203-18,Advance Algorithms,REGULAR,3,0,0,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,MTCS203-18,Advance Algorithms Lab,REGULAR,0,0,2,G1,M.TECH,CSE,2nd
+Computer Science & Engineering,AGCS - 21702D,Professional Elective Course-3 (PEC-3)- ACN,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702E,Professional Elective Course-3 (PEC-3)- BIA,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702H,Professional Elective Course-3 (PEC-3)- RL,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th
+Computer Science & Engineering,AGCS - 21702K,Professional Elective Course-3 (PEC-3)- NLP,NPTEL,3,0,0,G1 G2,B.TECH,"CSE,COE",8th

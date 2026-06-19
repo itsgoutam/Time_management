@@ -15,6 +15,9 @@ from . import accounts as acc
 PUBLIC_NAMES = {'login', 'logout'}
 
 # Department Admins are blocked from these (Admin-only).
+# NOTE: 'delete_all' is intentionally NOT here — a Department Admin may delete
+# their OWN department's data. The delete_all view enforces the per-department
+# scope on the backend (see views.delete_all).
 ADMIN_ONLY_NAMES = {
     'manage_accounts', 'create_account', 'delete_account',
     'add_department', 'edit_department', 'delete_department',

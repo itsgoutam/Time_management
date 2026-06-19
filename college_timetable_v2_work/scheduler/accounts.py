@@ -140,6 +140,20 @@ def can_access_department(request, dept_id):
 
 
 def can_access_object(request, obj):
+    # Shared professors belong to several departments (Professor.departments M2M).
+    # A Department Admin may manage a professor mapped to their department, even if
+    # the professor's "home" department FK points elsewhere.
+    from .models import Professor
+    if isinstance(obj, Professor):
+        role = current_role(request)
+        if role == ADMIN:
+            return True
+        if role == DEPT_ADMIN:
+            did = current_department_id(request)
+            if obj.department_id is None or obj.department_id == did:
+                return True
+            return obj.departments.filter(id=did).exists()
+        return False
     return can_access_department(request, object_department_id(obj))
 
 

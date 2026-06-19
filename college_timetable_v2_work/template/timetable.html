@@ -87,8 +87,8 @@ tbody tr:last-child td{border-bottom:none;}
 
 /* CELLS — all same height */
 .cell{
-  border-radius:9px;padding:7px 5px;
-  width:100%;height:calc(var(--cell-h) - 8px);
+  border-radius:9px;padding:7px 6px;
+  width:100%;min-height:calc(var(--cell-h) - 8px);
   display:flex;flex-direction:column;align-items:center;
   justify-content:center;text-align:center;gap:3px;
   transition:transform .15s,box-shadow .15s;}
@@ -100,6 +100,9 @@ tbody tr:last-child td{border-bottom:none;}
 .cell-elec   .cell-code{background:#ffedd5;color:#c2410c;}
 .cell-elec   .cell-name{color:#c2410c;}
 .cell-elec   .cell-badge{background:#ffedd5;color:#c2410c;}
+.elec-item{display:flex;flex-direction:column;gap:0;padding:2px 4px;margin-top:3px;background:#fff;border:1px solid #fdba74;border-radius:5px;}
+.elec-name{font-size:.62rem;font-weight:700;color:#9a3412;line-height:1.15;}
+.elec-meta{font-size:.5rem;color:#c2410c;line-height:1.1;}
 .cell-empty {background:#f8faff;         border:1.5px solid #eef2ff;}
 .cell-lunch {background:var(--lunch-bg); border:1.5px solid var(--lunch-border);
   align-items:center;justify-content:center;}
@@ -114,6 +117,10 @@ tbody tr:last-child td{border-bottom:none;}
 .cell-lab    .cell-name{color:var(--lab-text);}
 .cell-tut    .cell-name{color:var(--tut-text);}
 .cell-prof{font-size:.65rem;color:var(--muted);margin-top:1px;}
+/* Long names wrap fully and the cell grows to fit — nothing is clipped */
+tbody td{vertical-align:top;height:auto;}
+.cell-name,.cell-prof,.cell-room,.cell-code,.elec-name,.elec-meta,.cell-class{
+  overflow-wrap:anywhere;word-break:break-word;white-space:normal;max-width:100%;}
 .cell-room{font-size:.63rem;font-weight:600;color:#374151;margin-top:2px;
   background:#fff;border:1px solid var(--border);border-radius:5px;
   padding:1px 6px;display:inline-flex;align-items:center;gap:3px;}
@@ -207,6 +214,13 @@ tbody tr:last-child td{border-bottom:none;}
               <td {% if cell.colspan == 2 %}colspan="2"{% endif %}>
                 {% if cell.slot in lunch_slots %}
                   <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
+                {% elif cell.entries|length > 1 %}
+                  <div class="cell cell-elec">
+                    <span class="cell-badge">🔀 Electives · 1 hr</span>
+                    {% for e in cell.entries %}
+                    <div class="elec-item"><span class="elec-name">{{ e.subject.name }}</span><span class="elec-meta">🚪 {{ e.room.name|default:'—' }} · 👤 {{ e.professor.name }}</span></div>
+                    {% endfor %}
+                  </div>
                 {% elif cell.entry %}
                   <div class="cell {% if cell.entry.subject.is_elective %}cell-elec{% elif cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
                     {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}

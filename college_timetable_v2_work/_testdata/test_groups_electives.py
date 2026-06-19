@@ -27,13 +27,16 @@ a.post('/csv-upload/', dict(files, auto_generate=''), follow=True)
 cse=Department.objects.get(name__startswith='Computer')
 course=Course.objects.filter(department=cse).first()
 
-sec('1. SECTION dropdown lists CSV section names (I, II, III)')
+sec('1. SECTION combo suggests CSV section names (I, II, III) + accepts custom')
 f = SectionForm()
-choice_vals = [c[0] for c in f.fields['section_name'].choices]
-print('   section dropdown options:', choice_vals)
-ck('dropdown includes CSV custom sections I, II, III', {'I','II','III'} <= set(choice_vals))
-ck('dropdown still includes standard A-E', {'A','B','C','D','E'} <= set(choice_vals))
-ck('dropdown includes a Custom option', 'CUSTOM' in choice_vals)
+# Section is now a free-text combo input (DatalistInput) — it suggests existing
+# names but accepts ANY custom value, so we check the suggestion list.
+suggestions = [str(s) for s in f.fields['section_name'].widget.suggestions]
+print('   section suggestions:', suggestions)
+ck('suggestions include CSV custom sections I, II, III', {'I','II','III'} <= set(suggestions))
+ck('suggestions still include standard A-E', {'A','B','C','D','E'} <= set(suggestions))
+ck('field accepts a free custom value (no fixed choices)',
+   not hasattr(f.fields['section_name'], 'choices') or not f.fields['section_name'].choices)
 
 sec('2. GROUP button adds groups (add a group to existing section I)')
 before = Section.objects.filter(course=course, year='3', section_name='CUSTOM', custom_section_name='I').count()

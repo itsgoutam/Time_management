@@ -63,10 +63,8 @@ secI_groups = sorted(Section.objects.filter(course=course, year='3', section_nam
 ck('Section I has exactly its own group(s), not merged', secI_groups==['G1'], f'{secI_groups}')
 
 sec('4. STUDENT picker keeps custom sections distinct')
-import json, re
-g = a.get('/login/').content.decode()
-m = re.search(r'var DATA = (\[.*?\]);', g, re.S)
-data = json.loads(m.group(1)) if m else []
+from scheduler.auth_views import _student_section_data
+data = _student_section_data()
 cse_sem3 = sorted({d['section_name'] for d in data if d['dept_name'].startswith('Computer') and d['year']=='3'})
 ck('student picker lists I, II, III separately (not one "CUSTOM")', set(cse_sem3) >= {'I','II','III'}, f'{cse_sem3}')
 # student can log in to a specific custom section
