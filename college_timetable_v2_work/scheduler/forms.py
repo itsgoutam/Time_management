@@ -446,3 +446,27 @@ class DepartmentSettingsForm(forms.ModelForm):
             'dept_start_slot': 'First teaching slot of the day. Slots before this are skipped during scheduling.',
             'working_days': 'e.g. Monday,Tuesday,Wednesday,Thursday,Friday',
         }
+
+from scheduler.models import TimeSlot, DAY_CHOICES, SLOT_CHOICES
+
+class TimeSlotForm(forms.ModelForm):
+    class Meta:
+        model = TimeSlot
+        fields = ['day', 'slot', 'professor', 'room']
+        widgets = {
+            'day': forms.Select(choices=DAY_CHOICES),
+            'slot': forms.Select(choices=SLOT_CHOICES),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            dept_id = self.instance.section.course.department_id
+            from .models import Professor, Room
+            from django.db.models import Q
+            self.fields['professor'].queryset = Professor.objects.filter(
+                Q(department_id=dept_id) | Q(department__isnull=True)
+            ).order_by('name')
+            self.fields['room'].queryset = Room.objects.filter(
+                Q(department_id=dept_id) | Q(department__isnull=True)
+            ).order_by('name')

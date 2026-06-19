@@ -115,6 +115,9 @@ def object_department_id(obj):
         return obj.course.department_id
     if isinstance(obj, Subject):
         return obj.section.course.department_id if obj.section_id else None
+    from .models import TimeSlot
+    if isinstance(obj, TimeSlot):
+        return obj.section.course.department_id if obj.section_id else None
     if isinstance(obj, Professor):
         return obj.department_id  # may be None
     if isinstance(obj, ProfessorOccupiedTime):

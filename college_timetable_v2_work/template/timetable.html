@@ -215,14 +215,19 @@ tbody td{vertical-align:top;height:auto;}
                 {% if cell.slot in lunch_slots %}
                   <div class="cell cell-lunch"><div class="lunch-label">🍽 Lunch</div><div class="lunch-time">{{ slot_times|dict_key:cell.slot }}</div></div>
                 {% elif cell.entries|length > 1 %}
-                  <div class="cell cell-elec">
+                  <div class="cell cell-elec" style="position:relative;">
                     <span class="cell-badge">🔀 Electives · 1 hr</span>
                     {% for e in cell.entries %}
-                    <div class="elec-item"><span class="elec-name">{{ e.subject.name }}</span><span class="elec-meta">🚪 {{ e.room.name|default:'—' }} · 👤 {{ e.professor.name }}</span></div>
+                    <div class="elec-item" style="position:relative;">
+                      <span class="elec-name">{{ e.subject.name }}</span>
+                      <span class="elec-meta">🚪 {{ e.room.name|default:'—' }} · 👤 {{ e.professor.name }}</span>
+                      <a href="{% url 'edit_timeslot' e.id %}" style="position:absolute;top:2px;right:2px;font-size:.8rem;text-decoration:none;" title="Edit manually">⚙️</a>
+                    </div>
                     {% endfor %}
                   </div>
                 {% elif cell.entry %}
-                  <div class="cell {% if cell.entry.subject.is_elective %}cell-elec{% elif cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}">
+                  <div class="cell {% if cell.entry.subject.is_elective %}cell-elec{% elif cell.entry.subject.subject_type == 'LAB' %}cell-lab{% elif cell.entry.subject.subject_type == 'TUTORIAL' %}cell-tut{% else %}cell-theory{% endif %}" style="position:relative;">
+                    <a href="{% url 'edit_timeslot' cell.entry.id %}" style="position:absolute;top:4px;right:4px;font-size:1rem;text-decoration:none;" title="Edit manually">⚙️</a>
                     {% if cell.entry.subject.code %}<div class="cell-code">{{ cell.entry.subject.code }}</div>{% endif %}
                     <div class="cell-name">{{ cell.entry.subject.name }}</div>
                     <div class="cell-prof">👤 {{ cell.entry.professor.name }}</div>

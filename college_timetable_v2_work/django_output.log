@@ -1,0 +1,62 @@
+Watching for file changes with StatReloader
+[19/Jun/2026 07:58:12] "GET /login/ HTTP/1.1" 200 13012
+[19/Jun/2026 08:03:42] "GET /login/ HTTP/1.1" 200 13012
+[19/Jun/2026 08:05:05] "GET /login/ HTTP/1.1" 200 13012
+[19/Jun/2026 08:05:07] "POST /login/ HTTP/1.1" 302 0
+[19/Jun/2026 08:05:08] "GET / HTTP/1.1" 200 663210
+[19/Jun/2026 08:05:08] "GET /static/agclogo.jpg HTTP/1.1" 200 7860
+Not Found: /timeslot/1/edit/
+[19/Jun/2026 08:05:09] "GET /timeslot/1/edit/ HTTP/1.1" 404 15554
+/app/college_timetable_v2_work/scheduler/accounts.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 19, 2026 - 07:55:24
+Django version 6.0.6, using settings 'college_timetable.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/6.0/howto/deployment/
+Watching for file changes with StatReloader
+/app/college_timetable_v2_work/scheduler/views.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 19, 2026 - 08:21:18
+Django version 6.0.6, using settings 'college_timetable.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/6.0/howto/deployment/
+Watching for file changes with StatReloader
+/app/college_timetable_v2_work/scheduler/forms.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 19, 2026 - 08:21:27
+Django version 6.0.6, using settings 'college_timetable.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/6.0/howto/deployment/
+Watching for file changes with StatReloader
+[19/Jun/2026 08:25:04] "GET /login/ HTTP/1.1" 200 13173
+[19/Jun/2026 08:25:06] "POST /login/ HTTP/1.1" 302 0
+[19/Jun/2026 08:25:07] "GET / HTTP/1.1" 200 671222
+[19/Jun/2026 08:25:07] "GET /static/agclogo.jpg HTTP/1.1" 200 7860
+[19/Jun/2026 08:25:08] "GET /timeslot/37949/edit/ HTTP/1.1" 200 9784
+/app/college_timetable_v2_work/scheduler/forms.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+June 19, 2026 - 08:21:43
+Django version 6.0.6, using settings 'college_timetable.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/6.0/howto/deployment/
+Watching for file changes with StatReloader
