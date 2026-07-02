@@ -19,8 +19,8 @@ from collections import defaultdict
 from .models import TimeSlot, DepartmentSettings, Professor
 
 # Hard conflicts block export; the rest are advisory warnings.
-HARD_KINDS = ('faculty', 'room', 'section')
-SOFT_KINDS = ('capacity', 'workload', 'nptel_prelunch')
+HARD_KINDS = ('faculty', 'room', 'section', 'nptel_duplicate')
+SOFT_KINDS = ('capacity', 'workload', 'nptel_prelunch', 'section_mapping')
 
 
 def _lunch_start_by_dept():
@@ -48,11 +48,17 @@ def find_conflicts(dept_id=None):
     by_room = defaultdict(list)
     by_sec = defaultdict(list)
     prof_slots = defaultdict(set)        # prof_id -> {(day, slot)} → contact hours
+    # prof_id -> day -> NPTEL subject name -> {slots}  (for once-per-day check)
+    nptel_by_prof_day = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    prof_names = {}
 
     for t in rows:
         if t.professor_id:
             by_prof[(t.professor_id, t.day, t.slot)].append(t)
             prof_slots[t.professor_id].add((t.day, t.slot))
+            prof_names[t.professor_id] = t.professor.name
+            if t.subject.subject_type == 'NPTEL':
+                nptel_by_prof_day[t.professor_id][t.day][t.subject.name].add(t.slot)
         if t.room_id:
             by_room[(t.room_id, t.day, t.slot)].append(t)
         if t.section_id:
@@ -118,6 +124,27 @@ def find_conflicts(dept_id=None):
                     'subject': t.subject.name, 'section': str(t.section),
                     'day': t.day, 'slot': t.slot})
 
+    # ── NPTEL duplicate-per-day: same NPTEL subject twice on one day for a prof ──
+    for pid, days in nptel_by_prof_day.items():
+        for day, subs in days.items():
+            for sname, slots in subs.items():
+                if len(slots) > 1:
+                    res['nptel_duplicate'].append({
+                        'professor': prof_names.get(pid, ''), 'day': day,
+                        'subject': sname, 'slots': sorted(slots)})
+
+    # ── Section mapping: a section stored as CUSTOM with no real custom name ────
+    # (would render as the literal "Custom"/"CUSTOM" instead of a real section).
+    seen_secs = set()
+    for t in rows:
+        sec = t.section
+        if not sec or sec.id in seen_secs:
+            continue
+        seen_secs.add(sec.id)
+        if sec.section_name == 'CUSTOM' and not (sec.custom_section_name or '').strip():
+            res['section_mapping'].append({'section_id': sec.id,
+                                           'label': sec.get_effective_section_name()})
+
     res['has_hard'] = any(res[k] for k in HARD_KINDS)
     res['total_hard'] = sum(len(res[k]) for k in HARD_KINDS)
     res['total_soft'] = sum(len(res[k]) for k in SOFT_KINDS)
@@ -136,4 +163,7 @@ def summary_lines(res):
     for s in res['section']:
         lines.append(f"Section clash: {s['section']} — {s['day']} slot {s['slot']} "
                      f"({', '.join(s['subjects'])})")
+    for n in res.get('nptel_duplicate', []):
+        lines.append(f"NPTEL repeated: {n['professor']} — {n['subject']} twice on "
+                     f"{n['day']} (slots {', '.join(map(str, n['slots']))})")
     return lines

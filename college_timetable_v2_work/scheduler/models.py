@@ -432,12 +432,16 @@ class StaffAccount(models.Model):
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_DEPT_ADMIN)
     username = models.CharField(max_length=100, unique=True)
-    password = models.CharField(max_length=255)  # hashed
+    password = models.CharField(max_length=255)  # hashed (Django PBKDF2-SHA256)
     department = models.ForeignKey(
         Department, on_delete=models.CASCADE, null=True, blank=True,
         related_name='admins',
         help_text='Required for Department Admins; leave blank for full Admins.')
     created_at = models.DateTimeField(auto_now_add=True)
+    # When True the user is forced to set a new password before doing anything else
+    # (seeded super-admins start with this True so the shared initial password can't
+    # be used beyond first login).
+    must_change_password = models.BooleanField(default=False)
 
     def set_password(self, raw_password):
         from django.contrib.auth.hashers import make_password

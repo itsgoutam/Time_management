@@ -80,6 +80,13 @@ main{max-width:1000px;margin:28px auto;padding:0 20px;}
     {% empty %}<div class="vr-none">No section/group has overlapping subjects (electives run in parallel, which is allowed).</div>{% endfor %}
   </div>
 
+  <div class="vr-card {% if res.nptel_duplicate %}hard{% else %}clean{% endif %}">
+    <h3>📡 NPTEL repeated on same day <span class="cnt">({{ res.nptel_duplicate|length }})</span></h3>
+    {% for n in res.nptel_duplicate %}
+      <div class="vr-row"><b>{{ n.professor }}</b> — {{ n.subject }} on {{ n.day }} (slots {{ n.slots|join:", " }})</div>
+    {% empty %}<div class="vr-none">No NPTEL subject repeats on the same day for any professor.</div>{% endfor %}
+  </div>
+
   <div class="vr-card {% if res.workload %}soft{% else %}clean{% endif %}">
     <h3>⚖️ Workload violations <span class="cnt">({{ res.workload|length }})</span></h3>
     {% for w in res.workload %}
@@ -99,6 +106,13 @@ main{max-width:1000px;margin:28px auto;padding:0 20px;}
     {% for c in res.capacity %}
       <div class="vr-row"><b>{{ c.section }}</b> ({{ c.students }} students) in {{ c.room }} (capacity {{ c.capacity }})</div>
     {% empty %}<div class="vr-none">Every assigned room fits its section.</div>{% endfor %}
+  </div>
+
+  <div class="vr-card {% if res.section_mapping %}soft{% else %}clean{% endif %}">
+    <h3>🏷️ Section name mapping <span class="cnt">({{ res.section_mapping|length }})</span></h3>
+    {% for m in res.section_mapping %}
+      <div class="vr-row">Section #{{ m.section_id }} has no real name (shows as “{{ m.label }}”) — fix its name in the sections CSV.</div>
+    {% empty %}<div class="vr-none">All sections have real names (no stray “CUSTOM”).</div>{% endfor %}
   </div>
 </main>
 </body>

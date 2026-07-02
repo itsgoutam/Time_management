@@ -21,9 +21,18 @@ STUDENT = 'STUDENT'
 STAFF_ROLES = (ADMIN, DEPT_ADMIN)
 ALL_ROLES = (ADMIN, DEPT_ADMIN, PROFESSOR, STUDENT)
 
-# Default Administrator seeded on first run. CHANGE THE PASSWORD after first login.
-DEFAULT_ADMIN_USERNAME = 'admin'
-DEFAULT_ADMIN_PASSWORD = 'admin123'
+# Default Administrator seeded on first run if no Admin exists.
+DEFAULT_ADMIN_USERNAME = 'Lenovo_admin'
+DEFAULT_ADMIN_PASSWORD = 'AGC_server@2002'
+
+# Super-admin accounts seeded on first run. They have full (ADMIN) privileges, the
+# shared initial password below (stored hashed), and are forced to change it on first
+# login (must_change_password=True).
+SUPER_ADMIN_EMAILS = (
+    'goutamkumar404225@gmail.com',
+    'sandhu456sandeep@gmail.com',
+)
+SUPER_ADMIN_INITIAL_PASSWORD = 'oneplus+'
 
 
 # ── Session login / logout ──────────────────────────────────────────────────────
@@ -33,6 +42,8 @@ def login_staff(request, account):
     request.session['account_id'] = account.id
     request.session['display_name'] = account.username
     request.session['department_id'] = account.department_id  # None for full admin
+    # Force a password change on first login for seeded / reset accounts.
+    request.session['must_change_password'] = bool(account.must_change_password)
 
 
 def login_professor(request, professor):
@@ -60,6 +71,11 @@ def current_role(request):
 
 def current_display_name(request):
     return request.session.get('display_name', '')
+
+
+def current_account_id(request):
+    """The StaffAccount id of the logged-in Admin / Dept Admin (None otherwise)."""
+    return request.session.get('account_id')
 
 
 def current_department_id(request):
@@ -93,6 +109,27 @@ def seed_default_admin():
     acc.set_password(DEFAULT_ADMIN_PASSWORD)
     acc.save()
     return acc
+
+
+def seed_super_admins():
+    """Create the two super-admin accounts (full ADMIN privileges) if missing.
+
+    Idempotent: an account that already exists is left untouched (so a user who has
+    already changed their password is never reset). New ones get the shared initial
+    password — stored HASHED — and must_change_password=True so it can't be reused
+    beyond first login.
+    """
+    from .models import StaffAccount
+    created = []
+    for email in SUPER_ADMIN_EMAILS:
+        if StaffAccount.objects.filter(username__iexact=email).exists():
+            continue
+        a = StaffAccount(role=ADMIN, username=email, department=None,
+                         must_change_password=True)
+        a.set_password(SUPER_ADMIN_INITIAL_PASSWORD)   # hashed via make_password
+        a.save()
+        created.append(email)
+    return created
 
 
 # ── Department scoping ───────────────────────────────────────────────────────────

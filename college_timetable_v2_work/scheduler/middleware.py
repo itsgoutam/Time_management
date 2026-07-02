@@ -65,6 +65,13 @@ class RoleAccessMiddleware:
         if role is None:
             return redirect('login')
 
+        # Force a pending password change before allowing anything else (super-admins
+        # on first login). Only the change-password page and logout are reachable.
+        if (role in acc.STAFF_ROLES
+                and request.session.get('must_change_password')
+                and url_name not in ('change_password', 'logout')):
+            return redirect('change_password')
+
         if role == acc.ADMIN:
             return None
 

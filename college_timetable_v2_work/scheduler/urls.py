@@ -6,6 +6,7 @@ urlpatterns = [
     # Authentication & accounts
     path('login/', auth_views.login_view, name='login'),
     path('logout/', auth_views.logout_view, name='logout'),
+    path('change-password/', auth_views.change_password, name='change_password'),
     path('accounts/', auth_views.manage_accounts, name='manage_accounts'),
     path('accounts/create/', auth_views.create_account, name='create_account'),
     path('accounts/<int:account_id>/delete/', auth_views.delete_account, name='delete_account'),

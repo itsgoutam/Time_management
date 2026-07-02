@@ -310,56 +310,89 @@ def import_rooms(file_obj, errors, warnings, default_department=None):
 
 # ── Professors CSV ─────────────────────────────────────────────────────────────
 
+# Slot START times in minutes-from-midnight, matching SLOT_TIMES_DISPLAY exactly:
+# 1=9:00 2=9:50 3=10:40 4=11:30 5=12:20 6=1:10 7=2:00 8=2:50 9=3:40 (each 50 min).
+_SLOT_START_MIN = {1: 540, 2: 590, 3: 640, 4: 690, 5: 740,
+                   6: 790, 7: 840, 8: 890, 9: 940}
+_DAY_NORM = {
+    'MON': 'Monday', 'MONDAY': 'Monday',
+    'TUE': 'Tuesday', 'TUES': 'Tuesday', 'TUESDAY': 'Tuesday',
+    'WED': 'Wednesday', 'WEDNESDAY': 'Wednesday',
+    'THU': 'Thursday', 'THUR': 'Thursday', 'THURS': 'Thursday', 'THURSDAY': 'Thursday',
+    'FRI': 'Friday', 'FRIDAY': 'Friday',
+    'SAT': 'Saturday', 'SATURDAY': 'Saturday',
+}
+
+
+def _time_to_minutes(tok):
+    """Parse a clock string to minutes-since-midnight, accepting the exact formats
+    the CSVs use: '2:00pm', '4:30pm', bare '9:50', '2:00', '11.30'. When no am/pm is
+    given, a bare 1–6 o'clock is read as afternoon (the college day is 9:00–4:30)."""
+    t = (tok or '').strip().lower().replace('.', ':').replace(' ', '')
+    m = re.match(r'^(\d{1,2})(?::(\d{2}))?(am|pm)?$', t)
+    if not m:
+        return None
+    h = int(m.group(1)); mi = int(m.group(2) or 0); ap = m.group(3)
+    if h > 23 or mi > 59:
+        return None
+    if ap == 'pm':
+        if h != 12:
+            h += 12
+    elif ap == 'am':
+        if h == 12:
+            h = 0
+    elif 1 <= h <= 6:            # no suffix → afternoon for 1–6 o'clock
+        h += 12
+    return h * 60 + mi
+
+
+def _slot_for_start(mins):
+    """Slot whose 50-minute window contains this START time (largest start ≤ mins)."""
+    best = None
+    for s, st in _SLOT_START_MIN.items():
+        if st <= mins and (best is None or st > _SLOT_START_MIN[best]):
+            best = s
+    return best
+
+
+def _slot_for_end(mins):
+    """Slot a class ENDING at this time occupies (the slot containing mins-1)."""
+    return _slot_for_start(max(0, mins - 1))
+
+
 def _parse_block_slots(block_str):
+    """Parse ONE 'Day,<time>' or 'Day,<start> to <end>' entry into
+    (day, start_slot, end_slot). Accepts am/pm and bare times; a start-only entry
+    (e.g. 'Tuesday,2:00pm') blocks just that one slot. Returns None if unparseable.
+
+    Multiple entries (several days) are split by the caller on '/' or '|' — each
+    becomes its own block, so a teacher listed for two days is blocked on both.
     """
-    Parse a block time string like "Tuesday,9:50 to 11:30" into
-    (day, start_slot, end_slot) using SLOT_TIMES_DISPLAY boundaries.
-    Returns None if parsing fails.
-    """
-    from .models import SLOT_TIMES_DISPLAY
-    # Map start-time strings to slot numbers
-    TIME_TO_SLOT = {
-        '9:00': 1, '9:50': 2, '10:40': 3,
-        '11:30': 4, '12:20': 5, '2:00': 6, '2:50': 7, '3:40': 8,
-        '09:00': 1, '09:50': 2,
-    }
-    # Map end-time strings to slot numbers  
-    END_TO_SLOT = {
-        '9:50': 1, '10:40': 2, '11:30': 3,
-        '12:20': 4, '1:10': 5, '13:10': 5,
-        '2:50': 6, '3:40': 7, '4:30': 8,
-        '09:50': 1, '10:40': 2,
-    }
-    DAY_NORM = {
-        'MON': 'Monday', 'MONDAY': 'Monday',
-        'TUE': 'Tuesday', 'TUESDAY': 'Tuesday',
-        'WED': 'Wednesday', 'WEDNESDAY': 'Wednesday',
-        'THU': 'Thursday', 'THURSDAY': 'Thursday',
-        'FRI': 'Friday', 'FRIDAY': 'Friday',
-    }
-    s = block_str.strip()
-    if not s:
+    s = (block_str or '').strip()
+    if not s or ',' not in s:
         return None
-    # Split on first comma to get day
-    parts = s.split(',', 1)
-    if len(parts) != 2:
-        return None
-    day_raw = parts[0].strip().upper()
-    day = DAY_NORM.get(day_raw)
+    day_raw, time_part = s.split(',', 1)
+    day = _DAY_NORM.get(day_raw.strip().upper())
     if not day:
         return None
-    time_part = parts[1].strip()
-    # Support "9:50 to 11:30" or "9:50-11:30"
-    for sep in [' to ', ' TO ', '-', '–']:
-        if sep in time_part:
-            t_parts = time_part.split(sep, 1)
-            start_str = t_parts[0].strip()
-            end_str   = t_parts[1].strip()
-            start_slot = TIME_TO_SLOT.get(start_str)
-            end_slot   = END_TO_SLOT.get(end_str)
-            if start_slot and end_slot and start_slot <= end_slot:
-                return (day, start_slot, end_slot)
-    return None
+    # Range separators: 'to', hyphen, en/em dash. A start-only entry has none.
+    bits = [b.strip() for b in re.split(r'\s+to\s+|\s*[-–—]\s*', time_part.strip(), flags=re.I) if b.strip()]
+    if not bits:
+        return None
+    sm = _time_to_minutes(bits[0])
+    if sm is None:
+        return None
+    start_slot = _slot_for_start(sm)
+    if not start_slot:
+        return None
+    if len(bits) > 1:
+        em = _time_to_minutes(bits[1])
+        end_slot = _slot_for_end(em) if em is not None else start_slot
+    else:
+        end_slot = start_slot          # start-only → single slot
+    if end_slot < start_slot:
+        end_slot = start_slot
+    return (day, start_slot, end_slot)
 
 
 def _resolve_assignment_dept(sem, sec_name, program, default_department, home_dept):
@@ -554,8 +587,10 @@ def import_professors(file_obj, errors, warnings, default_department=None):
         if BLOCK_KEY:
             block_raw = _norm(row.get(BLOCK_KEY, ''))
             if block_raw:
-                # Support multiple blocks separated by |
-                block_entries = [b.strip() for b in block_raw.split('|') if b.strip()]
+                # Multiple blocks (different days) are separated by '/' or '|' —
+                # each becomes its own block, so the teacher is blocked on every
+                # listed day/time.
+                block_entries = [b.strip() for b in re.split(r'[|/]', block_raw) if b.strip()]
                 for entry in block_entries:
                     parsed = _parse_block_slots(entry)
                     if parsed:
@@ -571,14 +606,16 @@ def import_professors(file_obj, errors, warnings, default_department=None):
                     else:
                         warnings.append(
                             f"Professor '{name}' row {i}: could not parse block slot "
-                            f"'{entry}'. Use format: Day,HH:MM to HH:MM "
-                            f"(e.g. Tuesday,9:50 to 11:30)")
+                            f"'{entry}'. Use Day,time or Day,start to end "
+                            f"(e.g. Tuesday,2:00pm  or  Friday,3:30pm to 4:30pm); "
+                            f"separate multiple days with '/'.")
 
         # ── Fixed teaching slots (must-teach this subject at this time) ──────
         if FIXED_KEY:
             fixed_raw = _norm(row.get(FIXED_KEY, ''))
             if fixed_raw:
-                for entry in [b.strip() for b in fixed_raw.split('|') if b.strip()]:
+                # Multiple fixed slots (different days) separated by '/' or '|'.
+                for entry in [b.strip() for b in re.split(r'[|/]', fixed_raw) if b.strip()]:
                     parsed = _parse_block_slots(entry)
                     if parsed:
                         day, start_slot, end_slot = parsed
@@ -593,8 +630,9 @@ def import_professors(file_obj, errors, warnings, default_department=None):
                     else:
                         warnings.append(
                             f"Professor '{name}' row {i}: could not parse fixed slot "
-                            f"'{entry}'. Use format: Day,HH:MM to HH:MM "
-                            f"(e.g. Wednesday,9:50 to 11:30)")
+                            f"'{entry}'. Use Day,time or Day,start to end "
+                            f"(e.g. Wednesday,2:00pm to 2:50pm); "
+                            f"separate multiple days with '/'.")
     return created
 
 
@@ -647,7 +685,10 @@ def import_sections(file_obj, errors, warnings):
         group_raw = _norm_up(row.get('group', 'G1'))
         fixed_room_name = _norm(row.get('fixed_room', ''))
         # Accept either 'Course_name' (current template) or legacy 'Course'.
-        course_raw = _norm_up(row.get('course_name', '') or row.get('course', ''))
+        # Keep the ORIGINAL text (e.g. 'B.Sc.') for display; upper-case only for the
+        # engineering-code lookup so recognised codes still map exactly as before.
+        course_display = _norm(row.get('course_name', '') or row.get('course', ''))
+        course_raw = _norm_up(course_display)
         # Parse free_day — accept column name 'free_day' or 'Free Day / Holiday'
         free_day_raw = _norm(row.get('free_day', '') or row.get('Free Day / Holiday', ''))
         free_day = DAY_NORM.get(free_day_raw.upper(), free_day_raw.capitalize() if free_day_raw else '')
@@ -688,12 +729,30 @@ def import_sections(file_obj, errors, warnings):
         sec_code = SECTION_MAP.get(sec_raw, 'CUSTOM')
         custom_sec = sec_raw if sec_code == 'CUSTOM' else ''
         group = group_raw if group_raw in ('G1', 'G2', 'G3', 'G4') else 'G1'
-        course_code = COURSE_MAP.get(course_raw, 'BTECH')
+        # Course handling — PRESERVE ANY course, don't force everything to B.TECH.
+        #   • Recognised engineering codes (B.TECH/BE/M.TECH) map exactly as before.
+        #   • Any OTHER non-blank course (B.Sc., M.Sc., B.Voc., BCA, MBA, Diploma, …)
+        #     is stored as a CUSTOM course keeping its real name (custom_name), so it
+        #     is never silently corrupted to B.TECH and subject import can match it.
+        #   • A blank course keeps the historic B.TECH default but is warned (never
+        #     silently), so existing engineering imports are unaffected.
+        course_code = COURSE_MAP.get(course_raw)
+        course_custom = ''
+        if course_code is None:
+            if course_display:
+                course_code = 'CUSTOM'
+                course_custom = course_display          # e.g. 'B.Sc.'
+            else:
+                course_code = 'BTECH'
+                warnings.append(f"Sections row {i}: missing course, defaulted to B.TECH.")
         # Student branch/programme, e.g. CSE / COE (from the 'Program Name' column).
         program = _norm_up(row.get('program_name', '') or row.get('program', ''))
 
         dept, _ = Department.objects.get_or_create(name=dept_name)
-        course, _ = Course.objects.get_or_create(department=dept, name=course_code)
+        # Include custom_name in the lookup so distinct custom courses (B.Sc. vs M.Sc.
+        # vs B.Voc.) become distinct Course rows instead of colliding on name='CUSTOM'.
+        course, _ = Course.objects.get_or_create(
+            department=dept, name=course_code, custom_name=course_custom)
 
         fixed_room = None
         if fixed_room_name:
@@ -1133,8 +1192,14 @@ def run_full_import(files_dict, default_department=None):
                 if dept_norm != _norm_dept(sec_dept):
                     return False
             if course_filter:
-                sec_course = _norm_up(getattr(sec.course, 'name', ''))
-                if course_filter.replace('.', '') not in sec_course.replace('.', ''):
+                # Compare against the course's REAL display name (e.g. 'B.Sc.',
+                # 'B.TECH'), not the internal storage code ('CUSTOM'/'BTECH'), so a
+                # 'B.Sc.' subject matches a 'B.Sc.' section. Dots/spaces are ignored on
+                # both sides ('B.TECH' == 'BTECH'), preserving engineering matches.
+                def _c(x):
+                    return _norm_up(x).replace('.', '').replace(' ', '')
+                sec_course = _c(sec.course.get_display_name())
+                if _c(course_filter) not in sec_course:
                     return False
             if year_filter:
                 sec_year = _norm_up(getattr(sec, 'year', ''))

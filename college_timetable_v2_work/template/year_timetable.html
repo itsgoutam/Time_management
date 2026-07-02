@@ -122,7 +122,7 @@ td{vertical-align:top;}
   {% for item in section_tables %}
   <div class="section-block">
     <div class="section-label">
-      <h2>👥 <span class="grp">Sec {{ item.section.section_name }} — {{ item.section.get_group_display }}</span>
+      <h2>👥 <span class="grp">Sec {{ item.section.get_effective_section_name }} — {{ item.section.get_group_display }}</span>
         {% if item.section.room %} · 🏫 {{ item.section.room.name }}{% endif %}
         {% if item.section.lab %} · 🧪 {{ item.section.lab.name }}{% endif %}
       </h2>

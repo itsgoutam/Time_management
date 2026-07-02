@@ -109,6 +109,17 @@ def _scope_form_to_dept(request, form):
         f['professor'].queryset = f['professor'].queryset.filter(department_id=dept_id)
 
 
+def _after_change(request):
+    """Redirect target after an admin add/edit/delete of a room, section, subject or
+    professor. If a timetable already exists it is AUTOMATICALLY REGENERATED so it
+    always reflects the latest data; before the first generation we just return to the
+    dashboard (nothing to rebuild yet)."""
+    if TimeSlot.objects.exists():
+        messages.info(request, '♻️ Change detected — regenerating the timetable…')
+        return redirect('generate_smart')
+    return redirect('dashboard')
+
+
 # ─── Shared professor scoping helpers ─────────────────────────────────────────
 
 def _professors_for_dept(dept_id):
@@ -320,7 +331,7 @@ def add_room(request):
             room.department_id = dept_id
         room.save()
         messages.success(request, '✅ Room added.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'generic_form.html', {'form': form, 'title': 'Add Room / Lab', 'icon': '🚪'})
 
 def edit_room(request, room_id):
@@ -332,7 +343,7 @@ def edit_room(request, room_id):
     if form.is_valid():
         form.save()
         messages.success(request, '✅ Room updated.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'generic_form.html', {'form': form, 'title': 'Edit Room', 'icon': '🚪', 'edit': True})
 
 def delete_room(request, room_id):
@@ -342,7 +353,7 @@ def delete_room(request, room_id):
     if request.method == 'POST':
         room.delete()
         messages.success(request, f'🗑️ Room "{room.name}" deleted.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'confirm_delete.html', {'object': room, 'type': 'Room'})
 
 def room_schedule(request, room_id):
@@ -445,7 +456,7 @@ def add_section(request):
                 messages.success(request, f'✅ {created} group(s) created successfully.' + (f' {skipped} already existed.' if skipped else ''))
             else:
                 messages.warning(request, '⚠️ All selected groups already exist for this section.')
-            return redirect('dashboard')
+            return _after_change(request)
         elif form.is_valid() and not selected_groups:
             form.add_error(None, 'Please select at least one group.')
     return render(request, 'section_form.html', {'form': form, 'title': 'Add Section / Group', 'icon': '👥'})
@@ -463,7 +474,7 @@ def edit_section(request, section_id):
             form.cleaned_data.get('custom_section_name'))
         base.save()
         messages.success(request, '✅ Section updated.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'section_form.html', {'form': form, 'title': 'Edit Section', 'icon': '👥', 'edit': True})
 
 def delete_section(request, section_id):
@@ -473,7 +484,7 @@ def delete_section(request, section_id):
     if request.method == 'POST':
         section.delete()
         messages.success(request, '🗑️ Section deleted.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'confirm_delete.html', {'object': section, 'type': 'Section'})
 
 
@@ -513,7 +524,7 @@ def add_subject(request):
                     'form': form, 'qblock_form': qblock_form,
                     'professors_with_blocks': professors_with_blocks,
                 })
-            return redirect('dashboard')
+            return _after_change(request)
         if 'add_quick_block' in request.POST:
             prof_id   = request.POST.get('qblock-professor')
             day       = request.POST.get('qblock-day', 'Monday')
@@ -564,7 +575,7 @@ def edit_subject(request, subject_id):
             else:
                 subj.professors.clear()
             messages.success(request, '✅ Subject updated.')
-            return redirect('dashboard')
+            return _after_change(request)
         if 'add_quick_block' in request.POST:
             prof_id   = request.POST.get('qblock-professor')
             day       = request.POST.get('qblock-day', 'Monday')
@@ -599,7 +610,7 @@ def delete_subject(request, subject_id):
     if request.method == 'POST':
         subject.delete()
         messages.success(request, '🗑️ Subject deleted.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'confirm_delete.html', {'object': subject, 'type': 'Subject'})
 
 
@@ -614,7 +625,8 @@ def add_professor(request):
         if dept_id and not professor.department_id:
             professor.department_id = dept_id
         professor.save()
-        return redirect('dashboard')
+        messages.success(request, '✅ Professor added.')
+        return _after_change(request)
     return render(request, 'professor_form.html', {'form': form})
 
 def edit_professor(request, professor_id):
@@ -630,7 +642,7 @@ def edit_professor(request, professor_id):
             prof.department_id = dept_id
         prof.save()
         messages.success(request, '✅ Professor updated.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'professor_form.html', {'form': form, 'edit': True})
 
 def delete_professor(request, professor_id):
@@ -640,7 +652,7 @@ def delete_professor(request, professor_id):
     if request.method == 'POST':
         professor.delete()
         messages.success(request, '🗑️ Professor deleted.')
-        return redirect('dashboard')
+        return _after_change(request)
     return render(request, 'confirm_delete.html', {'object': professor, 'type': 'Professor'})
 
 
@@ -3078,11 +3090,11 @@ def generate_timetable_smart(request):
         lunch_end_slot = max(lunch_slots) if lunch_slots else (dept_start + 3)
         post_lunch = [s for s in avail_slots if s > lunch_end_slot]
         pre_lunch  = [s for s in avail_slots if s < lunch_start_slot]
-        # NPTEL prefers after-lunch slots; if a section has none free there, it may
-        # fall back to a before-lunch slot (appended last so it's a last resort).
-        nptel_slots = ([s for s in NPTEL_SLOTS if s in post_lunch]
-                       + [s for s in post_lunch if s not in NPTEL_SLOTS]
-                       + pre_lunch)
+        # NPTEL should be the LAST subject of the day: prefer the LATEST after-lunch
+        # slot first (slot 9, then 8, then 7 …). A before-lunch slot is a last resort
+        # (also latest-first) only when no after-lunch slot is free for the section.
+        nptel_slots = (sorted(post_lunch, reverse=True)
+                       + sorted(pre_lunch, reverse=True))
 
         theory_subjects = {}
         nptel_subjects = {}           # grouped by subject name — same logic as THEORY
@@ -3230,54 +3242,55 @@ def generate_timetable_smart(request):
                     f"{subj.name} — could not place without exceeding 2 consecutive "
                     f"classes / no free room (check room capacity)")
 
-        # ── NPTEL SCHEDULING (slot 6 first, then 7,8,9 — all post-lunch) ────────
-        # Both groups get the same professor, room, and time slot (mirrors THEORY logic).
-        nptel_list = list(nptel_subjects.values())
+        # ── NPTEL SCHEDULING — place at the LATEST slot (so it's last of the day) ──
+        # Reserved here (before labs/tutorials) so the slot is guaranteed; a later
+        # "tighten" pass then pulls each NPTEL down to sit immediately after the day's
+        # actual last class (no trailing gap). Once per day per subject; online (no
+        # room) unless a room is explicitly set on the subject.
         nptel_pool = []
-        for n in nptel_list:
+        for n in nptel_subjects.values():
             for _ in range(n['subj'].lectures_per_week):
                 nptel_pool.append(n)
         random.shuffle(nptel_pool)
-
-        # `nptel_slots` is already in PREFERENCE order: after-lunch slots first
-        # (Req 6), pre-lunch fallback last. Rank by that order — sorting by the raw
-        # slot number would wrongly try low-numbered pre-lunch slots before lunch.
-        nptel_rank = {s: i for i, s in enumerate(nptel_slots)}
+        nptel_rank = {s: i for i, s in enumerate(nptel_slots)}   # latest-first order
+        nptel_days_used = defaultdict(set)
         for n in nptel_pool:
             nsubj = n['subj']
             placed = False
             candidates = []
             for day in effective_w_days:
+                if day in nptel_days_used[nsubj.name]:
+                    continue
                 for s in nptel_slots:
                     if s not in pair_used_slots[day]:
                         candidates.append((day, s))
-            # After-lunch first; a pre-lunch slot is used only when no after-lunch
-            # slot is free for this section.
-            candidates.sort(key=lambda x: nptel_rank.get(x[1], 99))
+            candidates.sort(key=lambda x: nptel_rank.get(x[1], 99))   # latest slot first
             for day, s in candidates:
                 if s in pair_used_slots[day]:
                     continue
                 prof = pick_professor(nsubj, day, s)
-                if not prof:
+                if not prof or not prof_chain_ok(prof.id, day, s, s):
                     continue
-                if not prof_chain_ok(prof.id, day, s, s):
-                    continue   # would make 3 classes in a row for this professor
-                cls_room = get_free_room(dept_classrooms, day, s)
-                # Assign the same slot, professor, and room to ALL sections in the group
+                room = None
+                assigned = getattr(nsubj, 'lab_room', None)
+                if assigned and is_room_free(assigned.id, day, s):
+                    room = assigned
                 for sec in n['sections']:
                     sec_subj = n['subj_per_sec'].get(sec.id, nsubj)
                     TimeSlot.objects.create(day=day, slot=s, subject=sec_subj,
-                                            professor=prof, section=sec, room=cls_room)
+                                            professor=prof, section=sec, room=room)
                     total_created += 1
                 pair_used_slots[day].add(s)
+                nptel_days_used[nsubj.name].add(day)
                 mark_prof_busy(prof.id, day, s)
                 add_prof_session(prof.id, day, s, s)
-                if cls_room:
-                    mark_room_busy(cls_room, day, s)
+                if room:
+                    mark_room_busy(room, day, s)
                 placed = True
                 break
             if not placed:
-                clash_warnings.append(f"NPTEL {nsubj.name} — no free slot (after- or before-lunch)")
+                clash_warnings.append(
+                    f"NPTEL {nsubj.name} — no free slot on a new day")
         # ── LAB SCHEDULING ─────────────────────────────────────────────────────
         # RULE: When G1 has a 2-slot lab, G2 must get 2 tutorial slots in the
         # SAME time block (s1, s2) — and vice versa for G2 lab → G1 tutorials.
@@ -3345,6 +3358,11 @@ def generate_timetable_smart(request):
             sec_lab_days_used: set = set()
             is_g1 = sec.group == 'G1'
             preferred_starts = GROUP_ONE_LAB_STARTS if is_g1 else GROUP_TWO_LAB_STARTS
+            # Pre-lunch first: a lab block whose both slots are before lunch is
+            # strongly preferred so the morning fills up before any afternoon slot is
+            # used (students should have no empty pre-lunch periods while afternoon
+            # slots are occupied). Afternoon starts are a fallback only.
+            lab_lunch_start = min(lunch_slots) if lunch_slots else 6
 
             for ls in lab_pool:
                 candidates = []
@@ -3370,7 +3388,13 @@ def generate_timetable_smart(request):
                         and s not in lunch_slots and s + 1 not in lunch_slots
                     ]
                     for s1, s2 in valid_pairs:
-                        priority = (0 if s1 in preferred_starts else 1) + (10 if day_used else 0)
+                        # Morning-first DOMINATES day-spreading: every pre-lunch block
+                        # is preferred over every afternoon block, so the morning fills
+                        # up before any afternoon slot is used. Within the same
+                        # lunch-tier, a day not already holding this section's lab wins
+                        # (spread). Tiers: pre/fresh=0, pre/used=1, aft/fresh=2, aft/used=3.
+                        is_pre = s2 < lab_lunch_start
+                        priority = (0 if is_pre else 2) + (1 if day_used else 0)
                         # How many lab rooms are free for a 2-slot block starting here.
                         free_rooms = sum(1 for r in dept_labs if is_room_free(r.id, day, s1, 2))
                         candidates.append((priority, free_rooms, day, s1, s2))
@@ -3544,7 +3568,9 @@ def generate_timetable_smart(request):
                 if (s2 in item['avail_slots'] and s1 not in sec_used and s2 not in sec_used
                         and s1 not in LAB_FORBIDDEN_START
                         and s1 not in item['lunch_slots'] and s2 not in item['lunch_slots']):
-                    pri = 0 if s1 in item['preferred_starts'] else 1
+                    # Pre-lunch first (same rule as the main pass).
+                    _lstart = min(item['lunch_slots']) if item['lunch_slots'] else 6
+                    pri = 0 if s2 < _lstart else 1
                     free_rooms = sum(1 for r in item['dept_labs'] if is_room_free(r.id, day, s1, 2))
                     cands.append((pri, free_rooms, day, s1, s2))
         # Prefer slots with the MOST free lab rooms (spread), then preferred starts.
@@ -3589,6 +3615,45 @@ def generate_timetable_smart(request):
                 f"{ls.name} ({sec}) — no available lab slot "
                 f"(professor at workload limit or section fully booked)")
 
+    # ── NPTEL TIGHTEN PASS — pull NPTEL down to right after the day's last class ──
+    # NPTEL was reserved at the latest slot (guaranteed placement + last of day). Now
+    # that every other subject is placed, slide each NPTEL block DOWN to the first
+    # teaching slot immediately after that section-day's last non-NPTEL class, so it
+    # closes the day with no trailing gap. Only moves into slots that are free for the
+    # section(s) AND the professor — never creates a conflict, never drops a class.
+    nptel_ts = (TimeSlot.objects.filter(subject__subject_type='NPTEL')
+                .select_related('subject', 'section__course__department'))
+    # Group co-taught NPTEL (same subject name, day, slot — the G1+G2 rows) so they
+    # move together.
+    groups = defaultdict(list)
+    for ts in nptel_ts:
+        groups[(ts.professor_id, ts.day, ts.slot, ts.subject.name)].append(ts)
+    for (prof_id, day, cur_slot, _name), rows in groups.items():
+        secs = [t.section for t in rows]
+        dept_id = secs[0].course.department_id
+        lunch = get_lunch_slots(dept_id)
+        avail = [s for s in SLOTS if s not in lunch]
+        # Last NON-NPTEL class across these sections on this day.
+        last_class = 0
+        for sec in secs:
+            for t in TimeSlot.objects.filter(section=sec, day=day).select_related('subject'):
+                if t.subject.subject_type != 'NPTEL' and t.slot > last_class:
+                    last_class = t.slot
+        # First teaching slot strictly after the last class, below the current slot,
+        # free for every section and the professor.
+        for target in [s for s in avail if last_class < s < cur_slot]:
+            sec_free = all(not TimeSlot.objects.filter(section=sec, day=day, slot=target).exists()
+                           for sec in secs)
+            if sec_free and is_prof_free(prof_id, day, target):
+                # Move the whole co-taught block down.
+                mark_prof_busy(prof_id, day, target)
+                for t in rows:
+                    if t.room_id and is_room_free(t.room_id, day, target):
+                        mark_room_busy(t.room, day, target)
+                    t.slot = target
+                    t.save(update_fields=['slot'])
+                break
+
     # ── G1 / G2 Professor Sync Pass ─────────────────────────────────────────────
     # THEORY/NPTEL: G1 and G2 attend the same physical lecture → must have same professor.
     # LAB/TUTORIAL: separate sessions → each section keeps its own independently assigned prof.
@@ -3623,6 +3688,10 @@ def generate_timetable_smart(request):
     # clash; electives run in PARALLEL for a section (student picks one) so they are
     # exempt from the section check. The later (higher-id) conflicting slot is dropped.
     seen_prof, seen_room, seen_sec = {}, {}, {}
+    # (professor, day, NPTEL subject name) -> the single slot it is allowed on that day.
+    # Guarantees the same NPTEL subject never appears at TWO different slots in a day
+    # for a professor, even across sections (co-taught G1+G2 at the SAME slot is fine).
+    seen_nptel_day = {}
     for ts_obj in TimeSlot.objects.select_related('subject', 'section').order_by('id'):
         pkey = (ts_obj.professor_id, ts_obj.day, ts_obj.slot)
         if pkey in seen_prof and seen_prof[pkey] != ts_obj.subject.name:
@@ -3631,6 +3700,16 @@ def generate_timetable_smart(request):
             ts_obj.delete()
             continue
         seen_prof[pkey] = ts_obj.subject.name
+        # NPTEL once-per-day per professor (drop a second slot on the same day).
+        if ts_obj.subject.subject_type == 'NPTEL' and ts_obj.professor_id:
+            nkey = (ts_obj.professor_id, ts_obj.day, ts_obj.subject.name)
+            if nkey in seen_nptel_day and seen_nptel_day[nkey] != ts_obj.slot:
+                clash_warnings.append(
+                    f"Removed duplicate NPTEL: {ts_obj.subject.name} "
+                    f"({ts_obj.day} already has it)")
+                ts_obj.delete()
+                continue
+            seen_nptel_day[nkey] = ts_obj.slot
         if ts_obj.room_id:
             rkey = (ts_obj.room_id, ts_obj.day, ts_obj.slot)
             if rkey in seen_room and seen_room[rkey] != ts_obj.subject.name:
@@ -4059,6 +4138,15 @@ def workload_report(request):
     dept_filter_id = request.GET.get('dept')
     departments    = Department.objects.all().order_by('name')
 
+    # ── AUTHORIZATION: department isolation (enforced server-side) ─────────────
+    # A Department Admin may ONLY see their own department's workload — any ?dept=
+    # in the request is ignored and forced to their department. A full/Super Admin
+    # (own_dept is None) keeps the optional ?dept= filter and sees every department.
+    own_dept = acc.current_department_id(request)
+    if own_dept:
+        dept_filter_id = str(own_dept)
+        departments = departments.filter(id=own_dept)
+
     def mins_to_display(slots):
         """Convert contact slots to display. Each slot = 1 contact hr.
         Theory/Tutorial = 1 slot each, Lab = 2 slots."""
@@ -4188,6 +4276,11 @@ def workload_report_csv(request):
     from collections import OrderedDict
 
     dept_filter_id = request.GET.get('dept')
+    # AUTHORIZATION: a Department Admin can only export their OWN department's
+    # workload (server-side; any ?dept= is overridden). Super Admin exports all.
+    own_dept = acc.current_department_id(request)
+    if own_dept:
+        dept_filter_id = str(own_dept)
     filename = 'workload_report_all.csv'
     if dept_filter_id:
         try:
@@ -4404,14 +4497,15 @@ def free_students(request):
                     continue   # section is busy
                 dept_name    = sec.course.department.name
                 course_name  = sec.course.get_display_name() if hasattr(sec.course, 'get_display_name') else sec.course.name
+                eff_name = sec.get_effective_section_name()
                 free_sections.append({
                     'dept':         dept_name,
                     'course':       course_name,
-                    'year':         sec.year,
-                    'section':      sec.section_name,
+                    'year':         sec.get_year_display_label(),
+                    'section':      eff_name,
                     'group':        sec.group,
                     'class_count':  sec.class_count if sec.class_count else 0,
-                    'section_label': f"{course_name} {sec.year} Yr · Sec {sec.section_name} {sec.group}",
+                    'section_label': f"{course_name} {sec.get_year_display_label()} · Sec {eff_name} {sec.group}",
                 })
 
             if free_sections:

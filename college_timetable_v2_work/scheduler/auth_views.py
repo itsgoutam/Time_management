@@ -43,8 +43,9 @@ def _student_section_data():
 
 
 def login_view(request):
-    # Make sure a default Admin exists before anyone tries to log in.
+    # Make sure the default Admin and the two super-admins exist before anyone logs in.
     acc.seed_default_admin()
+    acc.seed_super_admins()
 
     # Already logged in → go to the role landing.
     if acc.current_role(request):
@@ -61,6 +62,9 @@ def login_view(request):
             account = StaffAccount.objects.filter(username__iexact=username).first()
             if account and account.role == want_role and account.check_password(password):
                 acc.login_staff(request, account)
+                if account.must_change_password:
+                    messages.info(request, 'Please set a new password before continuing.')
+                    return redirect('change_password')
                 messages.success(request, f"Welcome, {account.username}.")
                 return redirect('dashboard')
             messages.error(request, 'Invalid credentials for that account type.')
@@ -106,6 +110,39 @@ def logout_view(request):
     acc.logout(request)
     messages.info(request, 'You have been logged out.')
     return redirect('login')
+
+
+def change_password(request):
+    """Set a new password. Used for the forced first-login change (seeded super-admins)
+    and any voluntary change. Stores the new password hashed."""
+    if not acc.is_staff(request):
+        return redirect('login')
+    account = StaffAccount.objects.filter(id=acc.current_account_id(request)).first()
+    if not account:
+        return redirect('login')
+    forced = bool(request.session.get('must_change_password'))
+    if request.method == 'POST':
+        current = request.POST.get('current_password') or ''
+        new1 = request.POST.get('new_password') or ''
+        new2 = request.POST.get('confirm_password') or ''
+        # On a forced first-login change the current password is the shared initial
+        # one we already validated at login, so we don't re-require it.
+        if not forced and not account.check_password(current):
+            messages.error(request, 'Your current password is incorrect.')
+        elif len(new1) < 6:
+            messages.error(request, 'New password must be at least 6 characters.')
+        elif new1 != new2:
+            messages.error(request, 'The two new passwords do not match.')
+        elif account.check_password(new1):
+            messages.error(request, 'New password must be different from the old one.')
+        else:
+            account.set_password(new1)              # hashed
+            account.must_change_password = False
+            account.save(update_fields=['password', 'must_change_password'])
+            request.session['must_change_password'] = False
+            messages.success(request, '✅ Password updated.')
+            return redirect('dashboard')
+    return render(request, 'change_password.html', {'forced': forced, 'account': account})
 
 
 # ── Account management (Admin only) ─────────────────────────────────────────────
