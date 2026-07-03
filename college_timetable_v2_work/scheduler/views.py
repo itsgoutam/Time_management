@@ -4568,22 +4568,3 @@ def free_rooms_pdf(request):
     resp = _HttpResponse(buf, content_type='application/pdf')
     resp['Content-Disposition'] = 'attachment; filename="free_rooms_report.pdf"'
     return resp
-
-def edit_timeslot(request, timeslot_id):
-    from .forms import TimeSlotForm
-    ts = get_object_or_404(TimeSlot, id=timeslot_id)
-    guard = _dept_guard(request, ts)
-    if guard: return guard
-
-    form = TimeSlotForm(request.POST or None, instance=ts)
-    if form.is_valid():
-        form.save()
-        messages.success(request, '✅ TimeSlot updated.')
-        return redirect('section_timetable', section_id=ts.section_id)
-
-    return render(request, 'generic_form.html', {
-        'form': form,
-        'title': 'Edit TimeSlot',
-        'icon': '⚙️',
-        'edit': True
-    })

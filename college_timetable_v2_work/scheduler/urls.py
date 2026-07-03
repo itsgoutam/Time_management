@@ -72,7 +72,6 @@ urlpatterns = [
     path('generate/', views.generate_timetable, name='generate'),
     path('generate-smart/', views.generate_timetable_smart, name='generate_smart'),
     path('timetable/<int:section_id>/', views.section_timetable, name='section_timetable'),
-    path('timeslot/<int:timeslot_id>/edit/', views.edit_timeslot, name='edit_timeslot'),
     path('timetable/<int:section_id>/pdf/', views.export_pdf, name='export_pdf'),
     path('timetable/<int:section_id>/qr/', views.qr_timetable, name='qr_timetable'),
     path('timetable/<int:section_id>/csv/', views.export_timetable_csv, name='export_section_csv'),
